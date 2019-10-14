@@ -1,0 +1,1820 @@
+From 8613b076b580d7b38c0b67c5b38b90dbce8c5bbd Mon Sep 17 00:00:00 2001
+From: Aleksandar Likic <aleksandar.likic@securekey.com>
+Date: Wed, 13 Nov 2019 03:53:49 -0500
+Subject: [PATCH] Fix upstream.
+
+Signed-off-by: Aleksandar Likic <aleksandar.likic@securekey.com>
+---
+ .../common/capabilities/capabilities.go       |   2 +-
+ .../fabric/common/channelconfig/api.go        |   3 -
+ .../common/channelconfig/application.go       |   4 +-
+ .../common/channelconfig/applicationorg.go    |   3 +-
+ .../fabric/common/channelconfig/bundle.go     | 231 +-----------------
+ .../fabric/common/channelconfig/channel.go    |  72 +-----
+ .../fabric/common/channelconfig/consortium.go |   4 +-
+ .../common/channelconfig/consortiums.go       |   4 +-
+ .../fabric/common/channelconfig/msp.go        | 113 ---------
+ .../fabric/common/channelconfig/orderer.go    |   7 +-
+ .../common/channelconfig/organization.go      |  20 +-
+ .../fabric/common/channelconfig/util.go       |  54 +---
+ .../fabric/common/policies/policy.go          |   2 +-
+ .../hyperledger/fabric/common/util/utils.go   |   3 +-
+ .../fabric/common/viperutil/config_util.go    |   2 +-
+ .../hyperledger/fabric/core/config/config.go  | 128 ----------
+ .../ledger/kvledger/txmgmt/version/version.go |  27 ++
+ .../configtxgen/encoder/encoder.go            |   4 +-
+ .../configtxgen/localconfig/config.go         |  86 ++++---
+ .../fabric/libpatch/logbridge/logbridge.go    |  55 +++++
+ .../hyperledger/fabric/msp/configbuilder.go   | 118 +--------
+ .../hyperledger/fabric/msp/factory.go         |  62 -----
+ .../github.com/hyperledger/fabric/msp/msp.go  | 197 +--------------
+ .../fabric/protoutil/commonutils.go           |  13 -
+ .../fabric/protoutil/signeddata.go            |   3 +-
+ 25 files changed, 173 insertions(+), 1044 deletions(-)
+ delete mode 100644 internal/github.com/hyperledger/fabric/common/channelconfig/msp.go
+ delete mode 100644 internal/github.com/hyperledger/fabric/core/config/config.go
+ create mode 100644 internal/github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/version/version.go
+ create mode 100644 internal/github.com/hyperledger/fabric/libpatch/logbridge/logbridge.go
+
+diff --git a/internal/github.com/hyperledger/fabric/common/capabilities/capabilities.go b/internal/github.com/hyperledger/fabric/common/capabilities/capabilities.go
+index eaa5168..2c7de71 100644
+--- a/internal/github.com/hyperledger/fabric/common/capabilities/capabilities.go
++++ b/internal/github.com/hyperledger/fabric/common/capabilities/capabilities.go
+@@ -13,7 +13,7 @@ package capabilities
+ import (
+ 	cb "github.com/hyperledger/fabric-protos-go/common"
+ 	"github.com/pkg/errors"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/flogging"
++	flogging "github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/libpatch/logbridge"
+ )
+ 
+ var logger = flogging.MustGetLogger("common.capabilities")
+diff --git a/internal/github.com/hyperledger/fabric/common/channelconfig/api.go b/internal/github.com/hyperledger/fabric/common/channelconfig/api.go
+index 2010f29..ceead28 100644
+--- a/internal/github.com/hyperledger/fabric/common/channelconfig/api.go
++++ b/internal/github.com/hyperledger/fabric/common/channelconfig/api.go
+@@ -255,9 +255,6 @@ type Resources interface {
+ 	// and whether the Application config exists
+ 	ApplicationConfig() (Application, bool)
+ 
+-	// MSPManager returns the msp.MSPManager for the chain
+-	MSPManager() msp.MSPManager
+-
+ 	// ValidateNew should return an error if a new set of configuration resources is incompatible with the current one
+ 	ValidateNew(resources Resources) error
+ }
+diff --git a/internal/github.com/hyperledger/fabric/common/channelconfig/application.go b/internal/github.com/hyperledger/fabric/common/channelconfig/application.go
+index 0f4e6b9..5650f82 100644
+--- a/internal/github.com/hyperledger/fabric/common/channelconfig/application.go
++++ b/internal/github.com/hyperledger/fabric/common/channelconfig/application.go
+@@ -38,7 +38,7 @@ type ApplicationConfig struct {
+ }
+ 
+ // NewApplicationConfig creates config from an Application config group
+-func NewApplicationConfig(appGroup *cb.ConfigGroup, mspConfig *MSPConfigHandler) (*ApplicationConfig, error) {
++func NewApplicationConfig(appGroup *cb.ConfigGroup) (*ApplicationConfig, error) {
+ 	ac := &ApplicationConfig{
+ 		applicationOrgs: make(map[string]ApplicationOrg),
+ 		protos:          &ApplicationProtos{},
+@@ -56,7 +56,7 @@ func NewApplicationConfig(appGroup *cb.ConfigGroup, mspConfig *MSPConfigHandler)
+ 
+ 	var err error
+ 	for orgName, orgGroup := range appGroup.Groups {
+-		ac.applicationOrgs[orgName], err = NewApplicationOrgConfig(orgName, orgGroup, mspConfig)
++		ac.applicationOrgs[orgName], err = NewApplicationOrgConfig(orgName, orgGroup)
+ 		if err != nil {
+ 			return nil, err
+ 		}
+diff --git a/internal/github.com/hyperledger/fabric/common/channelconfig/applicationorg.go b/internal/github.com/hyperledger/fabric/common/channelconfig/applicationorg.go
+index 0083f5b..153e20c 100644
+--- a/internal/github.com/hyperledger/fabric/common/channelconfig/applicationorg.go
++++ b/internal/github.com/hyperledger/fabric/common/channelconfig/applicationorg.go
+@@ -36,7 +36,7 @@ type ApplicationOrgConfig struct {
+ }
+ 
+ // NewApplicationOrgConfig creates a new config for an application org
+-func NewApplicationOrgConfig(id string, orgGroup *cb.ConfigGroup, mspConfig *MSPConfigHandler) (*ApplicationOrgConfig, error) {
++func NewApplicationOrgConfig(id string, orgGroup *cb.ConfigGroup) (*ApplicationOrgConfig, error) {
+ 	if len(orgGroup.Groups) > 0 {
+ 		return nil, fmt.Errorf("ApplicationOrg config does not allow sub-groups")
+ 	}
+@@ -54,7 +54,6 @@ func NewApplicationOrgConfig(id string, orgGroup *cb.ConfigGroup, mspConfig *MSP
+ 		OrganizationConfig: &OrganizationConfig{
+ 			name:             id,
+ 			protos:           orgProtos,
+-			mspConfigHandler: mspConfig,
+ 		},
+ 	}
+ 
+diff --git a/internal/github.com/hyperledger/fabric/common/channelconfig/bundle.go b/internal/github.com/hyperledger/fabric/common/channelconfig/bundle.go
+index 2b55aea..268ad19 100644
+--- a/internal/github.com/hyperledger/fabric/common/channelconfig/bundle.go
++++ b/internal/github.com/hyperledger/fabric/common/channelconfig/bundle.go
+@@ -11,15 +11,7 @@ Please review third_party pinning scripts and patches for more details.
+ package channelconfig
+ 
+ import (
+-	cb "github.com/hyperledger/fabric-protos-go/common"
+-	"github.com/pkg/errors"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/bccsp"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/cauthdsl"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/configtx"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/flogging"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/policies"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/msp"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/protoutil"
++	flogging "github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/libpatch/logbridge"
+ )
+ 
+ var logger = flogging.MustGetLogger("common.channelconfig")
+@@ -27,224 +19,3 @@ var logger = flogging.MustGetLogger("common.channelconfig")
+ // RootGroupKey is the key for namespacing the channel config, especially for
+ // policy evaluation.
+ const RootGroupKey = "Channel"
+-
+-// Bundle is a collection of resources which will always have a consistent
+-// view of the channel configuration.  In particular, for a given bundle reference,
+-// the config sequence, the policy manager etc. will always return exactly the
+-// same value.  The Bundle structure is immutable and will always be replaced in its
+-// entirety, with new backing memory.
+-type Bundle struct {
+-	policyManager   policies.Manager
+-	channelConfig   *ChannelConfig
+-	configtxManager configtx.Validator
+-}
+-
+-// PolicyManager returns the policy manager constructed for this config.
+-func (b *Bundle) PolicyManager() policies.Manager {
+-	return b.policyManager
+-}
+-
+-// MSPManager returns the MSP manager constructed for this config.
+-func (b *Bundle) MSPManager() msp.MSPManager {
+-	return b.channelConfig.MSPManager()
+-}
+-
+-// ChannelConfig returns the config.Channel for the chain.
+-func (b *Bundle) ChannelConfig() Channel {
+-	return b.channelConfig
+-}
+-
+-// OrdererConfig returns the config.Orderer for the channel
+-// and whether the Orderer config exists.
+-func (b *Bundle) OrdererConfig() (Orderer, bool) {
+-	result := b.channelConfig.OrdererConfig()
+-	return result, result != nil
+-}
+-
+-// ConsortiumsConfig returns the config.Consortiums for the channel
+-// and whether the consortiums config exists.
+-func (b *Bundle) ConsortiumsConfig() (Consortiums, bool) {
+-	result := b.channelConfig.ConsortiumsConfig()
+-	return result, result != nil
+-}
+-
+-// ApplicationConfig returns the configtxapplication.SharedConfig for the channel
+-// and whether the Application config exists.
+-func (b *Bundle) ApplicationConfig() (Application, bool) {
+-	result := b.channelConfig.ApplicationConfig()
+-	return result, result != nil
+-}
+-
+-// ConfigtxValidator returns the configtx.Validator for the channel.
+-func (b *Bundle) ConfigtxValidator() configtx.Validator {
+-	return b.configtxManager
+-}
+-
+-// ValidateNew checks if a new bundle's contained configuration is valid to be derived from the current bundle.
+-// This allows checks of the nature "Make sure that the consensus type did not change".
+-func (b *Bundle) ValidateNew(nb Resources) error {
+-	if oc, ok := b.OrdererConfig(); ok {
+-		noc, ok := nb.OrdererConfig()
+-		if !ok {
+-			return errors.New("current config has orderer section, but new config does not")
+-		}
+-
+-		// Prevent consensus-type migration when channel capabilities ConsensusTypeMigration is disabled
+-		if !b.channelConfig.Capabilities().ConsensusTypeMigration() {
+-			if oc.ConsensusType() != noc.ConsensusType() {
+-				return errors.Errorf("attempted to change consensus type from %s to %s",
+-					oc.ConsensusType(), noc.ConsensusType())
+-			}
+-		}
+-
+-		for orgName, org := range oc.Organizations() {
+-			norg, ok := noc.Organizations()[orgName]
+-			if !ok {
+-				continue
+-			}
+-			mspID := org.MSPID()
+-			if mspID != norg.MSPID() {
+-				return errors.Errorf("orderer org %s attempted to change MSP ID from %s to %s", orgName, mspID, norg.MSPID())
+-			}
+-		}
+-	}
+-
+-	if ac, ok := b.ApplicationConfig(); ok {
+-		nac, ok := nb.ApplicationConfig()
+-		if !ok {
+-			return errors.New("current config has application section, but new config does not")
+-		}
+-
+-		for orgName, org := range ac.Organizations() {
+-			norg, ok := nac.Organizations()[orgName]
+-			if !ok {
+-				continue
+-			}
+-			mspID := org.MSPID()
+-			if mspID != norg.MSPID() {
+-				return errors.Errorf("application org %s attempted to change MSP ID from %s to %s", orgName, mspID, norg.MSPID())
+-			}
+-		}
+-	}
+-
+-	if cc, ok := b.ConsortiumsConfig(); ok {
+-		ncc, ok := nb.ConsortiumsConfig()
+-		if !ok {
+-			return errors.Errorf("current config has consortiums section, but new config does not")
+-		}
+-
+-		for consortiumName, consortium := range cc.Consortiums() {
+-			nconsortium, ok := ncc.Consortiums()[consortiumName]
+-			if !ok {
+-				continue
+-			}
+-
+-			for orgName, org := range consortium.Organizations() {
+-				norg, ok := nconsortium.Organizations()[orgName]
+-				if !ok {
+-					continue
+-				}
+-				mspID := org.MSPID()
+-				if mspID != norg.MSPID() {
+-					return errors.Errorf("consortium %s org %s attempted to change MSP ID from %s to %s", consortiumName, orgName, mspID, norg.MSPID())
+-				}
+-			}
+-		}
+-	} else if _, okNew := nb.ConsortiumsConfig(); okNew {
+-		return errors.Errorf("current config has no consortiums section, but new config does")
+-	}
+-
+-	return nil
+-}
+-
+-// NewBundleFromEnvelope wraps the NewBundle function, extracting the needed
+-// information from a full configtx
+-func NewBundleFromEnvelope(env *cb.Envelope, bccsp bccsp.BCCSP) (*Bundle, error) {
+-	payload, err := protoutil.UnmarshalPayload(env.Payload)
+-	if err != nil {
+-		return nil, errors.Wrap(err, "failed to unmarshal payload from envelope")
+-	}
+-
+-	configEnvelope, err := configtx.UnmarshalConfigEnvelope(payload.Data)
+-	if err != nil {
+-		return nil, errors.Wrap(err, "failed to unmarshal config envelope from payload")
+-	}
+-
+-	if payload.Header == nil {
+-		return nil, errors.Errorf("envelope header cannot be nil")
+-	}
+-
+-	chdr, err := protoutil.UnmarshalChannelHeader(payload.Header.ChannelHeader)
+-	if err != nil {
+-		return nil, errors.Wrap(err, "failed to unmarshal channel header")
+-	}
+-
+-	return NewBundle(chdr.ChannelId, configEnvelope.Config, bccsp)
+-}
+-
+-// NewBundle creates a new immutable bundle of configuration
+-func NewBundle(channelID string, config *cb.Config, bccsp bccsp.BCCSP) (*Bundle, error) {
+-	if err := preValidate(config); err != nil {
+-		return nil, err
+-	}
+-
+-	channelConfig, err := NewChannelConfig(config.ChannelGroup, bccsp)
+-	if err != nil {
+-		return nil, errors.Wrap(err, "initializing channelconfig failed")
+-	}
+-
+-	policyProviderMap := make(map[int32]policies.Provider)
+-	for pType := range cb.Policy_PolicyType_name {
+-		rtype := cb.Policy_PolicyType(pType)
+-		switch rtype {
+-		case cb.Policy_UNKNOWN:
+-			// Do not register a handler
+-		case cb.Policy_SIGNATURE:
+-			policyProviderMap[pType] = cauthdsl.NewPolicyProvider(channelConfig.MSPManager())
+-		case cb.Policy_MSP:
+-			// Add hook for MSP Handler here
+-		}
+-	}
+-
+-	policyManager, err := policies.NewManagerImpl(RootGroupKey, policyProviderMap, config.ChannelGroup)
+-	if err != nil {
+-		return nil, errors.Wrap(err, "initializing policymanager failed")
+-	}
+-
+-	configtxManager, err := configtx.NewValidatorImpl(channelID, config, RootGroupKey, policyManager)
+-	if err != nil {
+-		return nil, errors.Wrap(err, "initializing configtx manager failed")
+-	}
+-
+-	return &Bundle{
+-		policyManager:   policyManager,
+-		channelConfig:   channelConfig,
+-		configtxManager: configtxManager,
+-	}, nil
+-}
+-
+-func preValidate(config *cb.Config) error {
+-	if config == nil {
+-		return errors.New("channelconfig Config cannot be nil")
+-	}
+-
+-	if config.ChannelGroup == nil {
+-		return errors.New("config must contain a channel group")
+-	}
+-
+-	if og, ok := config.ChannelGroup.Groups[OrdererGroupKey]; ok {
+-		if _, ok := og.Values[CapabilitiesKey]; !ok {
+-			if _, ok := config.ChannelGroup.Values[CapabilitiesKey]; ok {
+-				return errors.New("cannot enable channel capabilities without orderer support first")
+-			}
+-
+-			if ag, ok := config.ChannelGroup.Groups[ApplicationGroupKey]; ok {
+-				if _, ok := ag.Values[CapabilitiesKey]; ok {
+-					return errors.New("cannot enable application capabilities without orderer support first")
+-				}
+-			}
+-		}
+-	}
+-
+-	return nil
+-}
+diff --git a/internal/github.com/hyperledger/fabric/common/channelconfig/channel.go b/internal/github.com/hyperledger/fabric/common/channelconfig/channel.go
+index 758b615..3b2556c 100644
+--- a/internal/github.com/hyperledger/fabric/common/channelconfig/channel.go
++++ b/internal/github.com/hyperledger/fabric/common/channelconfig/channel.go
+@@ -15,11 +15,7 @@ import (
+ 	"math"
+ 
+ 	cb "github.com/hyperledger/fabric-protos-go/common"
+-	"github.com/pkg/errors"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/bccsp"
+ 	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/capabilities"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/util"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/msp"
+ )
+ 
+ // Channel config keys
+@@ -42,6 +38,12 @@ const (
+ 	// CapabilitiesKey is the name of the key which refers to capabilities, it appears at the channel,
+ 	// application, and orderer levels and this constant is used for all three.
+ 	CapabilitiesKey = "Capabilities"
++
++	// SHA256
++	SHA256 = "SHA256"
++
++	// SHA3_256
++	SHA3_256 = "SHA3_256"
+ )
+ 
+ // ChannelValues gives read only access to the channel configuration
+@@ -71,62 +73,11 @@ type ChannelProtos struct {
+ type ChannelConfig struct {
+ 	protos *ChannelProtos
+ 
+-	hashingAlgorithm func(input []byte) []byte
+-
+-	mspManager msp.MSPManager
+-
+ 	appConfig         *ApplicationConfig
+ 	ordererConfig     *OrdererConfig
+ 	consortiumsConfig *ConsortiumsConfig
+ }
+ 
+-// NewChannelConfig creates a new ChannelConfig
+-func NewChannelConfig(channelGroup *cb.ConfigGroup, bccsp bccsp.BCCSP) (*ChannelConfig, error) {
+-	cc := &ChannelConfig{
+-		protos: &ChannelProtos{},
+-	}
+-
+-	if err := DeserializeProtoValuesFromGroup(channelGroup, cc.protos); err != nil {
+-		return nil, errors.Wrap(err, "failed to deserialize values")
+-	}
+-
+-	capabilities := cc.Capabilities()
+-
+-	if err := cc.Validate(capabilities); err != nil {
+-		return nil, err
+-	}
+-
+-	mspConfigHandler := NewMSPConfigHandler(capabilities.MSPVersion(), bccsp)
+-
+-	var err error
+-	for groupName, group := range channelGroup.Groups {
+-		switch groupName {
+-		case ApplicationGroupKey:
+-			cc.appConfig, err = NewApplicationConfig(group, mspConfigHandler)
+-		case OrdererGroupKey:
+-			cc.ordererConfig, err = NewOrdererConfig(group, mspConfigHandler, capabilities)
+-		case ConsortiumsGroupKey:
+-			cc.consortiumsConfig, err = NewConsortiumsConfig(group, mspConfigHandler)
+-		default:
+-			return nil, fmt.Errorf("Disallowed channel group: %s", group)
+-		}
+-		if err != nil {
+-			return nil, errors.Wrapf(err, "could not create channel %s sub-group config", groupName)
+-		}
+-	}
+-
+-	if cc.mspManager, err = mspConfigHandler.CreateMSPManager(); err != nil {
+-		return nil, err
+-	}
+-
+-	return cc, nil
+-}
+-
+-// MSPManager returns the MSP manager for this config
+-func (cc *ChannelConfig) MSPManager() msp.MSPManager {
+-	return cc.mspManager
+-}
+-
+ // OrdererConfig returns the orderer config associated with this channel
+ func (cc *ChannelConfig) OrdererConfig() *OrdererConfig {
+ 	return cc.ordererConfig
+@@ -142,11 +93,6 @@ func (cc *ChannelConfig) ConsortiumsConfig() *ConsortiumsConfig {
+ 	return cc.consortiumsConfig
+ }
+ 
+-// HashingAlgorithm returns a function pointer to the chain hashing algorihtm
+-func (cc *ChannelConfig) HashingAlgorithm() func(input []byte) []byte {
+-	return cc.hashingAlgorithm
+-}
+-
+ // BlockDataHashingStructure returns the width to use when forming the block data hashing structure
+ func (cc *ChannelConfig) BlockDataHashingStructureWidth() uint32 {
+ 	return cc.protos.BlockDataHashingStructure.Width
+@@ -190,10 +136,8 @@ func (cc *ChannelConfig) Validate(channelCapabilities ChannelCapabilities) error
+ 
+ func (cc *ChannelConfig) validateHashingAlgorithm() error {
+ 	switch cc.protos.HashingAlgorithm.Name {
+-	case bccsp.SHA256:
+-		cc.hashingAlgorithm = util.ComputeSHA256
+-	case bccsp.SHA3_256:
+-		cc.hashingAlgorithm = util.ComputeSHA3256
++	case SHA256:
++	case SHA3_256:
+ 	default:
+ 		return fmt.Errorf("Unknown hashing algorithm type: %s", cc.protos.HashingAlgorithm.Name)
+ 	}
+diff --git a/internal/github.com/hyperledger/fabric/common/channelconfig/consortium.go b/internal/github.com/hyperledger/fabric/common/channelconfig/consortium.go
+index aeff099..f5ff851 100644
+--- a/internal/github.com/hyperledger/fabric/common/channelconfig/consortium.go
++++ b/internal/github.com/hyperledger/fabric/common/channelconfig/consortium.go
+@@ -33,7 +33,7 @@ type ConsortiumConfig struct {
+ }
+ 
+ // NewConsortiumConfig creates a new instance of the consoritums config
+-func NewConsortiumConfig(consortiumGroup *cb.ConfigGroup, mspConfig *MSPConfigHandler) (*ConsortiumConfig, error) {
++func NewConsortiumConfig(consortiumGroup *cb.ConfigGroup) (*ConsortiumConfig, error) {
+ 	cc := &ConsortiumConfig{
+ 		protos: &ConsortiumProtos{},
+ 		orgs:   make(map[string]Org),
+@@ -45,7 +45,7 @@ func NewConsortiumConfig(consortiumGroup *cb.ConfigGroup, mspConfig *MSPConfigHa
+ 
+ 	for orgName, orgGroup := range consortiumGroup.Groups {
+ 		var err error
+-		if cc.orgs[orgName], err = NewOrganizationConfig(orgName, orgGroup, mspConfig); err != nil {
++		if cc.orgs[orgName], err = NewOrganizationConfig(orgName, orgGroup); err != nil {
+ 			return nil, err
+ 		}
+ 	}
+diff --git a/internal/github.com/hyperledger/fabric/common/channelconfig/consortiums.go b/internal/github.com/hyperledger/fabric/common/channelconfig/consortiums.go
+index 70fca15..391a0bc 100644
+--- a/internal/github.com/hyperledger/fabric/common/channelconfig/consortiums.go
++++ b/internal/github.com/hyperledger/fabric/common/channelconfig/consortiums.go
+@@ -25,14 +25,14 @@ type ConsortiumsConfig struct {
+ }
+ 
+ // NewConsortiumsConfig creates a new instance of the consoritums config
+-func NewConsortiumsConfig(consortiumsGroup *cb.ConfigGroup, mspConfig *MSPConfigHandler) (*ConsortiumsConfig, error) {
++func NewConsortiumsConfig(consortiumsGroup *cb.ConfigGroup) (*ConsortiumsConfig, error) {
+ 	cc := &ConsortiumsConfig{
+ 		consortiums: make(map[string]Consortium),
+ 	}
+ 
+ 	for consortiumName, consortiumGroup := range consortiumsGroup.Groups {
+ 		var err error
+-		if cc.consortiums[consortiumName], err = NewConsortiumConfig(consortiumGroup, mspConfig); err != nil {
++		if cc.consortiums[consortiumName], err = NewConsortiumConfig(consortiumGroup); err != nil {
+ 			return nil, err
+ 		}
+ 	}
+diff --git a/internal/github.com/hyperledger/fabric/common/channelconfig/msp.go b/internal/github.com/hyperledger/fabric/common/channelconfig/msp.go
+deleted file mode 100644
+index 62db295..0000000
+--- a/internal/github.com/hyperledger/fabric/common/channelconfig/msp.go
++++ /dev/null
+@@ -1,113 +0,0 @@
+-/*
+-Copyright IBM Corp. All Rights Reserved.
+-
+-SPDX-License-Identifier: Apache-2.0
+-*/
+-/*
+-Notice: This file has been modified for TrustBloc Fabric Lib Go EXT usage.
+-Please review third_party pinning scripts and patches for more details.
+-*/
+-
+-package channelconfig
+-
+-import (
+-	"fmt"
+-
+-	"github.com/golang/protobuf/proto"
+-	mspprotos "github.com/hyperledger/fabric-protos-go/msp"
+-	"github.com/pkg/errors"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/bccsp"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/msp"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/msp/cache"
+-)
+-
+-type pendingMSPConfig struct {
+-	mspConfig *mspprotos.MSPConfig
+-	msp       msp.MSP
+-}
+-
+-// MSPConfigHandler
+-type MSPConfigHandler struct {
+-	version msp.MSPVersion
+-	idMap   map[string]*pendingMSPConfig
+-	bccsp   bccsp.BCCSP
+-}
+-
+-func NewMSPConfigHandler(mspVersion msp.MSPVersion, bccsp bccsp.BCCSP) *MSPConfigHandler {
+-	return &MSPConfigHandler{
+-		version: mspVersion,
+-		idMap:   make(map[string]*pendingMSPConfig),
+-		bccsp:   bccsp,
+-	}
+-}
+-
+-// ProposeValue called when an org defines an MSP
+-func (bh *MSPConfigHandler) ProposeMSP(mspConfig *mspprotos.MSPConfig) (msp.MSP, error) {
+-	var theMsp msp.MSP
+-	var err error
+-
+-	switch mspConfig.Type {
+-	case int32(msp.FABRIC):
+-		// create the bccsp msp instance
+-		mspInst, err := msp.New(
+-			&msp.BCCSPNewOpts{NewBaseOpts: msp.NewBaseOpts{Version: bh.version}},
+-			bh.bccsp,
+-		)
+-		if err != nil {
+-			return nil, errors.WithMessage(err, "creating the MSP manager failed")
+-		}
+-
+-		// add a cache layer on top
+-		theMsp, err = cache.New(mspInst)
+-		if err != nil {
+-			return nil, errors.WithMessage(err, "creating the MSP cache failed")
+-		}
+-	case int32(msp.IDEMIX):
+-		// create the idemix msp instance
+-		theMsp, err = msp.New(
+-			&msp.IdemixNewOpts{NewBaseOpts: msp.NewBaseOpts{Version: bh.version}},
+-			bh.bccsp,
+-		)
+-		if err != nil {
+-			return nil, errors.WithMessage(err, "creating the MSP manager failed")
+-		}
+-	default:
+-		return nil, errors.New(fmt.Sprintf("Setup error: unsupported msp type %d", mspConfig.Type))
+-	}
+-
+-	// set it up
+-	err = theMsp.Setup(mspConfig)
+-	if err != nil {
+-		return nil, errors.WithMessage(err, "setting up the MSP manager failed")
+-	}
+-
+-	// add the MSP to the map of pending MSPs
+-	mspID, _ := theMsp.GetIdentifier()
+-
+-	existingPendingMSPConfig, ok := bh.idMap[mspID]
+-	if ok && !proto.Equal(existingPendingMSPConfig.mspConfig, mspConfig) {
+-		return nil, errors.New(fmt.Sprintf("Attempted to define two different versions of MSP: %s", mspID))
+-	}
+-
+-	if !ok {
+-		bh.idMap[mspID] = &pendingMSPConfig{
+-			mspConfig: mspConfig,
+-			msp:       theMsp,
+-		}
+-	}
+-
+-	return theMsp, nil
+-}
+-
+-func (bh *MSPConfigHandler) CreateMSPManager() (msp.MSPManager, error) {
+-	mspList := make([]msp.MSP, len(bh.idMap))
+-	i := 0
+-	for _, pendingMSP := range bh.idMap {
+-		mspList[i] = pendingMSP.msp
+-		i++
+-	}
+-
+-	manager := msp.NewMSPManager()
+-	err := manager.Setup(mspList)
+-	return manager, err
+-}
+diff --git a/internal/github.com/hyperledger/fabric/common/channelconfig/orderer.go b/internal/github.com/hyperledger/fabric/common/channelconfig/orderer.go
+index cab1553..c0dad3c 100644
+--- a/internal/github.com/hyperledger/fabric/common/channelconfig/orderer.go
++++ b/internal/github.com/hyperledger/fabric/common/channelconfig/orderer.go
+@@ -84,7 +84,7 @@ func (oc *OrdererOrgConfig) Endpoints() []string {
+ }
+ 
+ // NewOrdererOrgConfig returns an orderer org config built from the given ConfigGroup.
+-func NewOrdererOrgConfig(orgName string, orgGroup *cb.ConfigGroup, mspConfigHandler *MSPConfigHandler, channelCapabilities ChannelCapabilities) (*OrdererOrgConfig, error) {
++func NewOrdererOrgConfig(orgName string, orgGroup *cb.ConfigGroup, channelCapabilities ChannelCapabilities) (*OrdererOrgConfig, error) {
+ 	if len(orgGroup.Groups) > 0 {
+ 		return nil, fmt.Errorf("OrdererOrg config does not allow sub-groups")
+ 	}
+@@ -108,7 +108,6 @@ func NewOrdererOrgConfig(orgName string, orgGroup *cb.ConfigGroup, mspConfigHand
+ 		OrganizationConfig: &OrganizationConfig{
+ 			name:             orgName,
+ 			protos:           orgProtos,
+-			mspConfigHandler: mspConfigHandler,
+ 		},
+ 	}
+ 
+@@ -124,7 +123,7 @@ func (ooc *OrdererOrgConfig) Validate() error {
+ }
+ 
+ // NewOrdererConfig creates a new instance of the orderer config.
+-func NewOrdererConfig(ordererGroup *cb.ConfigGroup, mspConfig *MSPConfigHandler, channelCapabilities ChannelCapabilities) (*OrdererConfig, error) {
++func NewOrdererConfig(ordererGroup *cb.ConfigGroup, channelCapabilities ChannelCapabilities) (*OrdererConfig, error) {
+ 	oc := &OrdererConfig{
+ 		protos: &OrdererProtos{},
+ 		orgs:   make(map[string]OrdererOrg),
+@@ -140,7 +139,7 @@ func NewOrdererConfig(ordererGroup *cb.ConfigGroup, mspConfig *MSPConfigHandler,
+ 
+ 	for orgName, orgGroup := range ordererGroup.Groups {
+ 		var err error
+-		if oc.orgs[orgName], err = NewOrdererOrgConfig(orgName, orgGroup, mspConfig, channelCapabilities); err != nil {
++		if oc.orgs[orgName], err = NewOrdererOrgConfig(orgName, orgGroup, channelCapabilities); err != nil {
+ 			return nil, err
+ 		}
+ 	}
+diff --git a/internal/github.com/hyperledger/fabric/common/channelconfig/organization.go b/internal/github.com/hyperledger/fabric/common/channelconfig/organization.go
+index fd7b0e8..54edd57 100644
+--- a/internal/github.com/hyperledger/fabric/common/channelconfig/organization.go
++++ b/internal/github.com/hyperledger/fabric/common/channelconfig/organization.go
+@@ -16,7 +16,6 @@ import (
+ 	cb "github.com/hyperledger/fabric-protos-go/common"
+ 	mspprotos "github.com/hyperledger/fabric-protos-go/msp"
+ 	"github.com/pkg/errors"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/msp"
+ )
+ 
+ const (
+@@ -33,14 +32,12 @@ type OrganizationProtos struct {
+ type OrganizationConfig struct {
+ 	protos *OrganizationProtos
+ 
+-	mspConfigHandler *MSPConfigHandler
+-	msp              msp.MSP
+ 	mspID            string
+ 	name             string
+ }
+ 
+ // NewOrganizationConfig creates a new config for an organization
+-func NewOrganizationConfig(name string, orgGroup *cb.ConfigGroup, mspConfigHandler *MSPConfigHandler) (*OrganizationConfig, error) {
++func NewOrganizationConfig(name string, orgGroup *cb.ConfigGroup) (*OrganizationConfig, error) {
+ 	if len(orgGroup.Groups) > 0 {
+ 		return nil, fmt.Errorf("organizations do not support sub-groups")
+ 	}
+@@ -48,7 +45,6 @@ func NewOrganizationConfig(name string, orgGroup *cb.ConfigGroup, mspConfigHandl
+ 	oc := &OrganizationConfig{
+ 		protos:           &OrganizationProtos{},
+ 		name:             name,
+-		mspConfigHandler: mspConfigHandler,
+ 	}
+ 
+ 	if err := DeserializeProtoValuesFromGroup(orgGroup, oc.protos); err != nil {
+@@ -78,19 +74,5 @@ func (oc *OrganizationConfig) Validate() error {
+ }
+ 
+ func (oc *OrganizationConfig) validateMSP() error {
+-	var err error
+-
+-	logger.Debugf("Setting up MSP for org %s", oc.name)
+-	oc.msp, err = oc.mspConfigHandler.ProposeMSP(oc.protos.MSP)
+-	if err != nil {
+-		return err
+-	}
+-
+-	oc.mspID, _ = oc.msp.GetIdentifier()
+-
+-	if oc.mspID == "" {
+-		return fmt.Errorf("MSP for org %s has empty MSP ID", oc.name)
+-	}
+-
+ 	return nil
+ }
+diff --git a/internal/github.com/hyperledger/fabric/common/channelconfig/util.go b/internal/github.com/hyperledger/fabric/common/channelconfig/util.go
+index 404ad26..325b036 100644
+--- a/internal/github.com/hyperledger/fabric/common/channelconfig/util.go
++++ b/internal/github.com/hyperledger/fabric/common/channelconfig/util.go
+@@ -21,9 +21,6 @@ import (
+ 	ab "github.com/hyperledger/fabric-protos-go/orderer"
+ 	"github.com/hyperledger/fabric-protos-go/orderer/etcdraft"
+ 	pb "github.com/hyperledger/fabric-protos-go/peer"
+-	"github.com/pkg/errors"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/bccsp"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/protoutil"
+ )
+ 
+ const (
+@@ -36,7 +33,7 @@ const (
+ 	// AdminsPolicyKey is the key used for the read policy
+ 	AdminsPolicyKey = "Admins"
+ 
+-	defaultHashingAlgorithm = bccsp.SHA256
++	defaultHashingAlgorithm = SHA256
+ 
+ 	defaultBlockDataHashingStructureWidth = math.MaxUint32
+ )
+@@ -243,55 +240,6 @@ func ACLValues(acls map[string]string) *StandardConfigValue {
+ 	}
+ }
+ 
+-// ValidateCapabilities validates whether the peer can meet the capabilities requirement in the given config block
+-func ValidateCapabilities(block *cb.Block, bccsp bccsp.BCCSP) error {
+-	envelopeConfig, err := protoutil.ExtractEnvelope(block, 0)
+-	if err != nil {
+-		return errors.Errorf("failed to %s", err)
+-	}
+-
+-	configEnv := &cb.ConfigEnvelope{}
+-	_, err = protoutil.UnmarshalEnvelopeOfType(envelopeConfig, cb.HeaderType_CONFIG, configEnv)
+-	if err != nil {
+-		return errors.Errorf("malformed configuration envelope: %s", err)
+-	}
+-
+-	if configEnv.Config == nil {
+-		return errors.New("nil config envelope Config")
+-	}
+-
+-	if configEnv.Config.ChannelGroup == nil {
+-		return errors.New("no channel configuration was found in the config block")
+-	}
+-
+-	if configEnv.Config.ChannelGroup.Groups == nil {
+-		return errors.New("no channel configuration groups are available")
+-	}
+-
+-	_, exists := configEnv.Config.ChannelGroup.Groups[ApplicationGroupKey]
+-	if !exists {
+-		return errors.Errorf("invalid configuration block, missing %s "+
+-			"configuration group", ApplicationGroupKey)
+-	}
+-
+-	cc, err := NewChannelConfig(configEnv.Config.ChannelGroup, bccsp)
+-	if err != nil {
+-		return errors.Errorf("no valid channel configuration found due to %s", err)
+-	}
+-
+-	// Check the channel top-level capabilities
+-	if err := cc.Capabilities().Supported(); err != nil {
+-		return err
+-	}
+-
+-	// Check the application capabilities
+-	if err := cc.ApplicationConfig().Capabilities().Supported(); err != nil {
+-		return err
+-	}
+-
+-	return nil
+-}
+-
+ // MarshalEtcdRaftMetadata serializes etcd RAFT metadata.
+ func MarshalEtcdRaftMetadata(md *etcdraft.ConfigMetadata) ([]byte, error) {
+ 	copyMd := proto.Clone(md).(*etcdraft.ConfigMetadata)
+diff --git a/internal/github.com/hyperledger/fabric/common/policies/policy.go b/internal/github.com/hyperledger/fabric/common/policies/policy.go
+index 9a16ab8..0c01954 100644
+--- a/internal/github.com/hyperledger/fabric/common/policies/policy.go
++++ b/internal/github.com/hyperledger/fabric/common/policies/policy.go
+@@ -14,7 +14,7 @@ import (
+ 	"github.com/golang/protobuf/proto"
+ 	cb "github.com/hyperledger/fabric-protos-go/common"
+ 	"github.com/hyperledger/fabric-protos-go/msp"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/flogging"
++	flogging "github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/libpatch/logbridge"
+ 	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/protoutil"
+ )
+ 
+diff --git a/internal/github.com/hyperledger/fabric/common/util/utils.go b/internal/github.com/hyperledger/fabric/common/util/utils.go
+index 6a3a1f0..30a4c94 100644
+--- a/internal/github.com/hyperledger/fabric/common/util/utils.go
++++ b/internal/github.com/hyperledger/fabric/common/util/utils.go
+@@ -12,6 +12,7 @@ package util
+ 
+ import (
+ 	"crypto/rand"
++
+ 	"fmt"
+ 	"io"
+ )
+@@ -43,8 +44,6 @@ func idBytesToStr(id []byte) string {
+ 	return fmt.Sprintf("%x-%x-%x-%x-%x", id[0:4], id[4:6], id[6:8], id[8:10], id[10:])
+ }
+ 
+-const testchainid = "testchainid"
+-
+ // ConcatenateBytes is useful for combining multiple arrays of bytes, especially for
+ // signatures or digests over multiple fields
+ func ConcatenateBytes(data ...[]byte) []byte {
+diff --git a/internal/github.com/hyperledger/fabric/common/viperutil/config_util.go b/internal/github.com/hyperledger/fabric/common/viperutil/config_util.go
+index f27f397..bdb5382 100644
+--- a/internal/github.com/hyperledger/fabric/common/viperutil/config_util.go
++++ b/internal/github.com/hyperledger/fabric/common/viperutil/config_util.go
+@@ -27,7 +27,7 @@ import (
+ 	"github.com/mitchellh/mapstructure"
+ 	"github.com/pkg/errors"
+ 	"github.com/spf13/viper"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/flogging"
++	flogging "github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/libpatch/logbridge"
+ )
+ 
+ var logger = flogging.MustGetLogger("viperutil")
+diff --git a/internal/github.com/hyperledger/fabric/core/config/config.go b/internal/github.com/hyperledger/fabric/core/config/config.go
+deleted file mode 100644
+index 3e97783..0000000
+--- a/internal/github.com/hyperledger/fabric/core/config/config.go
++++ /dev/null
+@@ -1,128 +0,0 @@
+-/*
+-Copyright Greg Haskins <gregory.haskins@gmail.com> 2017, All Rights Reserved.
+-Copyright IBM Corp. All Rights Reserved.
+-
+-SPDX-License-Identifier: Apache-2.0
+-*/
+-/*
+-Notice: This file has been modified for TrustBloc Fabric Lib Go EXT usage.
+-Please review third_party pinning scripts and patches for more details.
+-*/
+-
+-package config
+-
+-import (
+-	"fmt"
+-	"os"
+-	"path/filepath"
+-
+-	"github.com/spf13/viper"
+-)
+-
+-func dirExists(path string) bool {
+-	fi, err := os.Stat(path)
+-	if err != nil {
+-		return false
+-	}
+-	return fi.IsDir()
+-}
+-
+-func AddConfigPath(v *viper.Viper, p string) {
+-	if v != nil {
+-		v.AddConfigPath(p)
+-	} else {
+-		viper.AddConfigPath(p)
+-	}
+-}
+-
+-//----------------------------------------------------------------------------------
+-// TranslatePath()
+-//----------------------------------------------------------------------------------
+-// Translates a relative path into a fully qualified path relative to the config
+-// file that specified it.  Absolute paths are passed unscathed.
+-//----------------------------------------------------------------------------------
+-func TranslatePath(base, p string) string {
+-	if filepath.IsAbs(p) {
+-		return p
+-	}
+-
+-	return filepath.Join(base, p)
+-}
+-
+-//----------------------------------------------------------------------------------
+-// TranslatePathInPlace()
+-//----------------------------------------------------------------------------------
+-// Translates a relative path into a fully qualified path in-place (updating the
+-// pointer) relative to the config file that specified it.  Absolute paths are
+-// passed unscathed.
+-//----------------------------------------------------------------------------------
+-func TranslatePathInPlace(base string, p *string) {
+-	*p = TranslatePath(base, *p)
+-}
+-
+-//----------------------------------------------------------------------------------
+-// GetPath()
+-//----------------------------------------------------------------------------------
+-// GetPath allows configuration strings that specify a (config-file) relative path
+-//
+-// For example: Assume our config is located in /etc/hyperledger/fabric/core.yaml with
+-// a key "msp.configPath" = "msp/config.yaml".
+-//
+-// This function will return:
+-//      GetPath("msp.configPath") -> /etc/hyperledger/fabric/msp/config.yaml
+-//
+-//----------------------------------------------------------------------------------
+-func GetPath(key string) string {
+-	p := viper.GetString(key)
+-	if p == "" {
+-		return ""
+-	}
+-
+-	return TranslatePath(filepath.Dir(viper.ConfigFileUsed()), p)
+-}
+-
+-const OfficialPath = "/etc/hyperledger/fabric"
+-
+-//----------------------------------------------------------------------------------
+-// InitViper()
+-//----------------------------------------------------------------------------------
+-// Performs basic initialization of our viper-based configuration layer.
+-// Primary thrust is to establish the paths that should be consulted to find
+-// the configuration we need.  If v == nil, we will initialize the global
+-// Viper instance
+-//----------------------------------------------------------------------------------
+-func InitViper(v *viper.Viper, configName string) error {
+-	var altPath = os.Getenv("FABRIC_CFG_PATH")
+-	if altPath != "" {
+-		// If the user has overridden the path with an envvar, its the only path
+-		// we will consider
+-
+-		if !dirExists(altPath) {
+-			return fmt.Errorf("FABRIC_CFG_PATH %s does not exist", altPath)
+-		}
+-
+-		AddConfigPath(v, altPath)
+-	} else {
+-		// If we get here, we should use the default paths in priority order:
+-		//
+-		// *) CWD
+-		// *) /etc/hyperledger/fabric
+-
+-		// CWD
+-		AddConfigPath(v, "./")
+-
+-		// And finally, the official path
+-		if dirExists(OfficialPath) {
+-			AddConfigPath(v, OfficialPath)
+-		}
+-	}
+-
+-	// Now set the configuration file.
+-	if v != nil {
+-		v.SetConfigName(configName)
+-	} else {
+-		viper.SetConfigName(configName)
+-	}
+-
+-	return nil
+-}
+diff --git a/internal/github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/version/version.go b/internal/github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/version/version.go
+new file mode 100644
+index 0000000..ca984f6
+--- /dev/null
++++ b/internal/github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/version/version.go
+@@ -0,0 +1,27 @@
++/*
++Copyright IBM Corp. 2016 All Rights Reserved.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++		 http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++/*
++Notice: This file has been modified for TrustBloc Fabric Lib Go EXT usage.
++Please review third_party pinning scripts and patches for more details.
++*/
++
++package version
++
++// Height represents the height of a transaction in blockchain
++type Height struct {
++	BlockNum uint64
++	TxNum    uint64
++}
+diff --git a/internal/github.com/hyperledger/fabric/libinternal/configtxgen/encoder/encoder.go b/internal/github.com/hyperledger/fabric/libinternal/configtxgen/encoder/encoder.go
+index 6c2bd21..c5e9dbb 100644
+--- a/internal/github.com/hyperledger/fabric/libinternal/configtxgen/encoder/encoder.go
++++ b/internal/github.com/hyperledger/fabric/libinternal/configtxgen/encoder/encoder.go
+@@ -11,19 +11,19 @@ Please review third_party pinning scripts and patches for more details.
+ package encoder
+ 
+ import (
+-	"github.com/gogo/protobuf/proto"
++	"github.com/golang/protobuf/proto"
+ 	cb "github.com/hyperledger/fabric-protos-go/common"
+ 	pb "github.com/hyperledger/fabric-protos-go/peer"
+ 	"github.com/pkg/errors"
+ 	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/cauthdsl"
+ 	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/channelconfig"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/flogging"
+ 	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/genesis"
+ 	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/policies"
+ 	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/util"
+ 	genesisconfig "github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/libinternal/configtxgen/localconfig"
+ 	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/libinternal/configtxlator/update"
+ 	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/libinternal/pkg/identity"
++	flogging "github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/libpatch/logbridge"
+ 	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/msp"
+ 	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/protoutil"
+ )
+diff --git a/internal/github.com/hyperledger/fabric/libinternal/configtxgen/localconfig/config.go b/internal/github.com/hyperledger/fabric/libinternal/configtxgen/localconfig/config.go
+index fbd77bb..37447c4 100644
+--- a/internal/github.com/hyperledger/fabric/libinternal/configtxgen/localconfig/config.go
++++ b/internal/github.com/hyperledger/fabric/libinternal/configtxgen/localconfig/config.go
+@@ -16,12 +16,13 @@ import (
+ 	"strings"
+ 	"time"
+ 
++	"github.com/pkg/errors"
++
+ 	"github.com/hyperledger/fabric-protos-go/orderer/etcdraft"
+ 	"github.com/spf13/viper"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/flogging"
+ 	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/policies"
+ 	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/viperutil"
+-	cf "github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/core/config"
++	flogging "github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/libpatch/logbridge"
+ 	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/msp"
+ )
+ 
+@@ -222,16 +223,15 @@ var genesisDefaults = TopLevel{
+ //
+ // Note, for environment overrides to work properly within a profile, Load
+ // should be used instead.
+-func LoadTopLevel(configPaths ...string) *TopLevel {
++func LoadTopLevel(configPaths ...string) (*TopLevel, error) {
++	if len(configPaths) == 0 {
++		return nil, errors.New("Missing config path")
++	}
+ 	config := viper.New()
+-	if len(configPaths) > 0 {
+-		for _, p := range configPaths {
+-			config.AddConfigPath(p)
+-		}
+-		config.SetConfigName(configName)
+-	} else {
+-		cf.InitViper(config, configName)
++	for _, p := range configPaths {
++		config.AddConfigPath(p)
+ 	}
++	config.SetConfigName(configName)
+ 
+ 	// For environment variables
+ 	config.SetEnvPrefix(Prefix)
+@@ -242,36 +242,35 @@ func LoadTopLevel(configPaths ...string) *TopLevel {
+ 
+ 	err := config.ReadInConfig()
+ 	if err != nil {
+-		logger.Panic("Error reading configuration: ", err)
++		return nil, errors.WithMessage(err, "Error reading configuration: ")
+ 	}
+ 	logger.Debugf("Using config file: %s", config.ConfigFileUsed())
+ 
+ 	var uconf TopLevel
+ 	err = viperutil.EnhancedExactUnmarshal(config, &uconf)
+ 	if err != nil {
+-		logger.Panic("Error unmarshaling config into struct: ", err)
++		return nil, errors.WithMessage(err, "Error unmarshaling config into struct: ")
+ 	}
+ 
+ 	(&uconf).completeInitialization(filepath.Dir(config.ConfigFileUsed()))
+ 
+ 	logger.Infof("Loaded configuration: %s", config.ConfigFileUsed())
+ 
+-	return &uconf
++	return &uconf, nil
+ }
+ 
+ // Load returns the orderer/application config combination that corresponds to
+ // a given profile. Config paths may optionally be provided and will be used
+ // in place of the FABRIC_CFG_PATH env variable.
+-func Load(profile string, configPaths ...string) *Profile {
++func Load(profile string, configPaths ...string) (*Profile, error) {
++	if len(configPaths) == 0 {
++		return nil, errors.New("Missing config path")
++	}
+ 	config := viper.New()
+-	if len(configPaths) > 0 {
+-		for _, p := range configPaths {
+-			config.AddConfigPath(p)
+-		}
+-		config.SetConfigName(configName)
+-	} else {
+-		cf.InitViper(config, configName)
++	for _, p := range configPaths {
++		config.AddConfigPath(p)
+ 	}
++	config.SetConfigName(configName)
+ 
+ 	// For environment variables
+ 	config.SetEnvPrefix(Prefix)
+@@ -284,26 +283,26 @@ func Load(profile string, configPaths ...string) *Profile {
+ 
+ 	err := config.ReadInConfig()
+ 	if err != nil {
+-		logger.Panic("Error reading configuration: ", err)
++		return nil, errors.WithMessage(err, "Error reading configuration: ")
+ 	}
+ 	logger.Debugf("Using config file: %s", config.ConfigFileUsed())
+ 
+ 	var uconf TopLevel
+ 	err = viperutil.EnhancedExactUnmarshal(config, &uconf)
+ 	if err != nil {
+-		logger.Panic("Error unmarshaling config into struct: ", err)
++		return nil, errors.WithMessage(err, "Error unmarshaling config into struct: ")
+ 	}
+ 
+ 	result, ok := uconf.Profiles[profile]
+ 	if !ok {
+-		logger.Panic("Could not find profile: ", profile)
++		return nil, errors.Errorf("Could not find profile: %v", profile)
+ 	}
+ 
+ 	result.completeInitialization(filepath.Dir(config.ConfigFileUsed()))
+ 
+ 	logger.Infof("Loaded configuration: %s", config.ConfigFileUsed())
+ 
+-	return result
++	return result, nil
+ }
+ 
+ func (t *TopLevel) completeInitialization(configDir string) {
+@@ -366,7 +365,7 @@ func (org *Organization) completeInitialization(configDir string) {
+ 	translatePaths(configDir, org)
+ }
+ 
+-func (ord *Orderer) completeInitialization(configDir string) {
++func (ord *Orderer) completeInitialization(configDir string) error {
+ loop:
+ 	for {
+ 		switch {
+@@ -406,7 +405,7 @@ loop:
+ 		}
+ 	case EtcdRaft:
+ 		if ord.EtcdRaft == nil {
+-			logger.Panicf("%s configuration missing", EtcdRaft)
++			return errors.Errorf("%s configuration missing", EtcdRaft)
+ 		}
+ 		if ord.EtcdRaft.Options == nil {
+ 			logger.Infof("Orderer.EtcdRaft.Options unset, setting to %v", genesisDefaults.Orderer.EtcdRaft.Options)
+@@ -436,7 +435,7 @@ loop:
+ 				ord.EtcdRaft.Options.SnapshotIntervalSize = genesisDefaults.Orderer.EtcdRaft.Options.SnapshotIntervalSize
+ 
+ 			case len(ord.EtcdRaft.Consenters) == 0:
+-				logger.Panicf("%s configuration did not specify any consenter", EtcdRaft)
++				return errors.Errorf("%s configuration did not specify any consenter", EtcdRaft)
+ 
+ 			default:
+ 				break second_loop
+@@ -444,7 +443,7 @@ loop:
+ 		}
+ 
+ 		if _, err := time.ParseDuration(ord.EtcdRaft.Options.TickInterval); err != nil {
+-			logger.Panicf("Etcdraft TickInterval (%s) must be in time duration format", ord.EtcdRaft.Options.TickInterval)
++			return errors.Errorf("Etcdraft TickInterval (%s) must be in time duration format", ord.EtcdRaft.Options.TickInterval)
+ 		}
+ 
+ 		// validate the specified members for Options
+@@ -454,29 +453,42 @@ loop:
+ 
+ 		for _, c := range ord.EtcdRaft.GetConsenters() {
+ 			if c.Host == "" {
+-				logger.Panicf("consenter info in %s configuration did not specify host", EtcdRaft)
++				return errors.Errorf("consenter info in %s configuration did not specify host", EtcdRaft)
+ 			}
+ 			if c.Port == 0 {
+-				logger.Panicf("consenter info in %s configuration did not specify port", EtcdRaft)
++				return errors.Errorf("consenter info in %s configuration did not specify port", EtcdRaft)
+ 			}
+ 			if c.ClientTlsCert == nil {
+-				logger.Panicf("consenter info in %s configuration did not specify client TLS cert", EtcdRaft)
++				return errors.Errorf("consenter info in %s configuration did not specify client TLS cert", EtcdRaft)
+ 			}
+ 			if c.ServerTlsCert == nil {
+-				logger.Panicf("consenter info in %s configuration did not specify server TLS cert", EtcdRaft)
++				return errors.Errorf("consenter info in %s configuration did not specify server TLS cert", EtcdRaft)
+ 			}
+ 			clientCertPath := string(c.GetClientTlsCert())
+-			cf.TranslatePathInPlace(configDir, &clientCertPath)
++			translatePathInPlace(configDir, &clientCertPath)
+ 			c.ClientTlsCert = []byte(clientCertPath)
+ 			serverCertPath := string(c.GetServerTlsCert())
+-			cf.TranslatePathInPlace(configDir, &serverCertPath)
++			translatePathInPlace(configDir, &serverCertPath)
+ 			c.ServerTlsCert = []byte(serverCertPath)
+ 		}
+ 	default:
+-		logger.Panicf("unknown orderer type: %s", ord.OrdererType)
++		return errors.Errorf("unknown orderer type: %s", ord.OrdererType)
+ 	}
++	return nil
+ }
+ 
+ func translatePaths(configDir string, org *Organization) {
+-	cf.TranslatePathInPlace(configDir, &org.MSPDir)
++	translatePathInPlace(configDir, &org.MSPDir)
++}
++
++func translatePath(base, p string) string {
++	if filepath.IsAbs(p) {
++		return p
++	}
++
++	return filepath.Join(base, p)
++}
++
++func translatePathInPlace(base string, p *string) {
++	*p = translatePath(base, *p)
+ }
+diff --git a/internal/github.com/hyperledger/fabric/libpatch/logbridge/logbridge.go b/internal/github.com/hyperledger/fabric/libpatch/logbridge/logbridge.go
+new file mode 100644
+index 0000000..3584ed4
+--- /dev/null
++++ b/internal/github.com/hyperledger/fabric/libpatch/logbridge/logbridge.go
+@@ -0,0 +1,55 @@
++/*
++Copyright SecureKey Technologies Inc. All Rights Reserved.
++
++SPDX-License-Identifier: Apache-2.0
++*/
++/*
++Notice: This file has been modified for TrustBloc Fabric Lib Go EXT usage.
++Please review third_party pinning scripts and patches for more details.
++*/
++
++package logbridge
++
++import (
++	"github.com/trustbloc/fabric-lib-go-ext/pkg/common/logging"
++)
++
++// Log levels (from pkg/logging/level.go).
++const (
++	CRITICAL logging.Level = iota
++	ERROR
++	WARNING
++	INFO
++	DEBUG
++)
++
++// Logger bridges the lib's logger struct
++type Logger struct {
++	*logging.Logger
++	module string
++}
++
++// MustGetLogger bridges calls the lib's NewLogger
++func MustGetLogger(module string) *Logger {
++	fabModule := "fablibgoext"
++	logger := logging.NewLogger(fabModule)
++	return &Logger{
++		Logger: logger,
++		module: fabModule,
++	}
++}
++
++// Warningf bridges calls to the lib logger's Warnf.
++func (l *Logger) Warningf(format string, args ...interface{}) {
++	l.Warnf(format, args...)
++}
++
++// Warning bridges calls to the lib logger's Warn.
++func (l *Logger) Warning(args ...interface{}) {
++	l.Warn(args...)
++}
++
++// IsEnabledFor bridges calls to the lib logger's IsEnabledFor.
++func (l *Logger) IsEnabledFor(level logging.Level) bool {
++	return logging.IsEnabledFor(l.module, level)
++}
+diff --git a/internal/github.com/hyperledger/fabric/msp/configbuilder.go b/internal/github.com/hyperledger/fabric/msp/configbuilder.go
+index 3d4076e..09ddc74 100644
+--- a/internal/github.com/hyperledger/fabric/msp/configbuilder.go
++++ b/internal/github.com/hyperledger/fabric/msp/configbuilder.go
+@@ -19,11 +19,12 @@ import (
+ 	"github.com/golang/protobuf/proto"
+ 	"github.com/hyperledger/fabric-protos-go/msp"
+ 	"github.com/pkg/errors"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/bccsp"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/bccsp/factory"
++	flogging "github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/libpatch/logbridge"
+ 	"gopkg.in/yaml.v2"
+ )
+ 
++var mspLogger = flogging.MustGetLogger("msp")
++
+ // OrganizationalUnitIdentifiersConfiguration is used to represent an OU
+ // and an associated trusted certificate
+ type OrganizationalUnitIdentifiersConfiguration struct {
+@@ -127,8 +128,6 @@ func getPemMaterialFromDir(dir string) ([][]byte, error) {
+ const (
+ 	cacerts              = "cacerts"
+ 	admincerts           = "admincerts"
+-	signcerts            = "signcerts"
+-	keystore             = "keystore"
+ 	intermediatecerts    = "intermediatecerts"
+ 	crlsfolder           = "crls"
+ 	configfilename       = "config.yaml"
+@@ -136,74 +135,11 @@ const (
+ 	tlsintermediatecerts = "tlsintermediatecerts"
+ )
+ 
+-func SetupBCCSPKeystoreConfig(bccspConfig *factory.FactoryOpts, keystoreDir string) *factory.FactoryOpts {
+-	if bccspConfig == nil {
+-		bccspConfig = factory.GetDefaultOpts()
+-	}
+-
+-	if bccspConfig.ProviderName == "SW" {
+-		if bccspConfig.SwOpts == nil {
+-			bccspConfig.SwOpts = factory.GetDefaultOpts().SwOpts
+-		}
+-
+-		// Only override the KeyStorePath if it was left empty
+-		if bccspConfig.SwOpts.FileKeystore == nil ||
+-			bccspConfig.SwOpts.FileKeystore.KeyStorePath == "" {
+-			bccspConfig.SwOpts.Ephemeral = false
+-			bccspConfig.SwOpts.FileKeystore = &factory.FileKeystoreOpts{KeyStorePath: keystoreDir}
+-		}
+-	}
+-
+-	return bccspConfig
+-}
+-
+-// GetLocalMspConfigWithType returns a local MSP
+-// configuration for the MSP in the specified
+-// directory, with the specified ID and type
+-func GetLocalMspConfigWithType(dir string, bccspConfig *factory.FactoryOpts, ID, mspType string) (*msp.MSPConfig, error) {
+-	switch mspType {
+-	case ProviderTypeToString(FABRIC):
+-		return GetLocalMspConfig(dir, bccspConfig, ID)
+-	case ProviderTypeToString(IDEMIX):
+-		return GetIdemixMspConfig(dir, ID)
+-	default:
+-		return nil, errors.Errorf("unknown MSP type '%s'", mspType)
+-	}
+-}
+-
+-func GetLocalMspConfig(dir string, bccspConfig *factory.FactoryOpts, ID string) (*msp.MSPConfig, error) {
+-	signcertDir := filepath.Join(dir, signcerts)
+-	keystoreDir := filepath.Join(dir, keystore)
+-	bccspConfig = SetupBCCSPKeystoreConfig(bccspConfig, keystoreDir)
+-
+-	err := factory.InitFactories(bccspConfig)
+-	if err != nil {
+-		return nil, errors.WithMessage(err, "could not initialize BCCSP Factories")
+-	}
+-
+-	signcert, err := getPemMaterialFromDir(signcertDir)
+-	if err != nil || len(signcert) == 0 {
+-		return nil, errors.Wrapf(err, "could not load a valid signer certificate from directory %s", signcertDir)
+-	}
+-
+-	/* FIXME: for now we're making the following assumptions
+-	1) there is exactly one signing cert
+-	2) BCCSP's KeyStore has the private key that matches SKI of
+-	   signing cert
+-	*/
+-
+-	sigid := &msp.SigningIdentityInfo{PublicSigner: signcert[0], PrivateSigner: nil}
+-
+-	return getMspConfig(dir, ID, sigid)
+-}
+-
+ // GetVerifyingMspConfig returns an MSP config given directory, ID and type
+ func GetVerifyingMspConfig(dir, ID, mspType string) (*msp.MSPConfig, error) {
+ 	switch mspType {
+ 	case ProviderTypeToString(FABRIC):
+ 		return getMspConfig(dir, ID, nil)
+-	case ProviderTypeToString(IDEMIX):
+-		return GetIdemixMspConfig(dir, ID)
+ 	default:
+ 		return nil, errors.Errorf("unknown MSP type '%s'", mspType)
+ 	}
+@@ -340,8 +276,8 @@ func getMspConfig(dir string, ID string, sigid *msp.SigningIdentityInfo) (*msp.M
+ 
+ 	// Set FabricCryptoConfig
+ 	cryptoConfig := &msp.FabricCryptoConfig{
+-		SignatureHashFamily:            bccsp.SHA2,
+-		IdentityIdentifierHashFunction: bccsp.SHA256,
++		SignatureHashFamily:            SHA2,
++		IdentityIdentifierHashFunction: SHA256,
+ 	}
+ 
+ 	// Compose FabricMSPConfig
+@@ -377,47 +313,3 @@ func loadCertificateAt(dir, certificatePath string, ouType string) []byte {
+ 
+ 	return nil
+ }
+-
+-const (
+-	IdemixConfigDirMsp                  = "msp"
+-	IdemixConfigDirUser                 = "user"
+-	IdemixConfigFileIssuerPublicKey     = "IssuerPublicKey"
+-	IdemixConfigFileRevocationPublicKey = "RevocationPublicKey"
+-	IdemixConfigFileSigner              = "SignerConfig"
+-)
+-
+-// GetIdemixMspConfig returns the configuration for the Idemix MSP
+-func GetIdemixMspConfig(dir string, ID string) (*msp.MSPConfig, error) {
+-	ipkBytes, err := readFile(filepath.Join(dir, IdemixConfigDirMsp, IdemixConfigFileIssuerPublicKey))
+-	if err != nil {
+-		return nil, errors.Wrapf(err, "failed to read issuer public key file")
+-	}
+-
+-	revocationPkBytes, err := readFile(filepath.Join(dir, IdemixConfigDirMsp, IdemixConfigFileRevocationPublicKey))
+-	if err != nil {
+-		return nil, errors.Wrapf(err, "failed to read revocation public key file")
+-	}
+-
+-	idemixConfig := &msp.IdemixMSPConfig{
+-		Name:         ID,
+-		Ipk:          ipkBytes,
+-		RevocationPk: revocationPkBytes,
+-	}
+-
+-	signerBytes, err := readFile(filepath.Join(dir, IdemixConfigDirUser, IdemixConfigFileSigner))
+-	if err == nil {
+-		signerConfig := &msp.IdemixMSPSignerConfig{}
+-		err = proto.Unmarshal(signerBytes, signerConfig)
+-		if err != nil {
+-			return nil, err
+-		}
+-		idemixConfig.Signer = signerConfig
+-	}
+-
+-	confBytes, err := proto.Marshal(idemixConfig)
+-	if err != nil {
+-		return nil, err
+-	}
+-
+-	return &msp.MSPConfig{Config: confBytes, Type: int32(IDEMIX)}, nil
+-}
+diff --git a/internal/github.com/hyperledger/fabric/msp/factory.go b/internal/github.com/hyperledger/fabric/msp/factory.go
+index e00c14e..8718b1e 100644
+--- a/internal/github.com/hyperledger/fabric/msp/factory.go
++++ b/internal/github.com/hyperledger/fabric/msp/factory.go
+@@ -10,11 +10,6 @@ Please review third_party pinning scripts and patches for more details.
+ 
+ package msp
+ 
+-import (
+-	"github.com/pkg/errors"
+-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/bccsp"
+-)
+-
+ type MSPVersion int
+ 
+ const (
+@@ -23,60 +18,3 @@ const (
+ 	MSPv1_3
+ 	MSPv1_4_2
+ )
+-
+-// NewOpts represent
+-type NewOpts interface {
+-	// GetVersion returns the MSP's version to be instantiated
+-	GetVersion() MSPVersion
+-}
+-
+-// NewBaseOpts is the default base type for all MSP instantiation Opts
+-type NewBaseOpts struct {
+-	Version MSPVersion
+-}
+-
+-func (o *NewBaseOpts) GetVersion() MSPVersion {
+-	return o.Version
+-}
+-
+-// BCCSPNewOpts contains the options to instantiate a new BCCSP-based (X509) MSP
+-type BCCSPNewOpts struct {
+-	NewBaseOpts
+-}
+-
+-// IdemixNewOpts contains the options to instantiate a new Idemix-based MSP
+-type IdemixNewOpts struct {
+-	NewBaseOpts
+-}
+-
+-// New create a new MSP instance depending on the passed Opts
+-func New(opts NewOpts, cryptoProvider bccsp.BCCSP) (MSP, error) {
+-	switch opts.(type) {
+-	case *BCCSPNewOpts:
+-		switch opts.GetVersion() {
+-		case MSPv1_0:
+-			return newBccspMsp(MSPv1_0, cryptoProvider)
+-		case MSPv1_1:
+-			return newBccspMsp(MSPv1_1, cryptoProvider)
+-		case MSPv1_3:
+-			return newBccspMsp(MSPv1_3, cryptoProvider)
+-		case MSPv1_4_2:
+-			return newBccspMsp(MSPv1_4_2, cryptoProvider)
+-		default:
+-			return nil, errors.Errorf("Invalid *BCCSPNewOpts. Version not recognized [%v]", opts.GetVersion())
+-		}
+-	case *IdemixNewOpts:
+-		switch opts.GetVersion() {
+-		case MSPv1_4_2:
+-			fallthrough
+-		case MSPv1_3:
+-			return newIdemixMsp(MSPv1_3)
+-		case MSPv1_1:
+-			return newIdemixMsp(MSPv1_1)
+-		default:
+-			return nil, errors.Errorf("Invalid *IdemixNewOpts. Version not recognized [%v]", opts.GetVersion())
+-		}
+-	default:
+-		return nil, errors.Errorf("Invalid msp.NewOpts instance. It must be either *BCCSPNewOpts or *IdemixNewOpts. It was [%v]", opts)
+-	}
+-}
+diff --git a/internal/github.com/hyperledger/fabric/msp/msp.go b/internal/github.com/hyperledger/fabric/msp/msp.go
+index 9d7c3c8..e786397 100644
+--- a/internal/github.com/hyperledger/fabric/msp/msp.go
++++ b/internal/github.com/hyperledger/fabric/msp/msp.go
+@@ -10,193 +10,9 @@ Please review third_party pinning scripts and patches for more details.
+ 
+ package msp
+ 
+-import (
+-	"time"
+-
+-	"github.com/hyperledger/fabric-protos-go/msp"
+-)
+-
+-// IdentityDeserializer is implemented by both MSPManger and MSP
+-type IdentityDeserializer interface {
+-	// DeserializeIdentity deserializes an identity.
+-	// Deserialization will fail if the identity is associated to
+-	// an msp that is different from this one that is performing
+-	// the deserialization.
+-	DeserializeIdentity(serializedIdentity []byte) (Identity, error)
+-
+-	// IsWellFormed checks if the given identity can be deserialized into its provider-specific form
+-	IsWellFormed(identity *msp.SerializedIdentity) error
+-}
+-
+-// Membership service provider APIs for Hyperledger Fabric:
+-//
+-// By "membership service provider" we refer to an abstract component of the
+-// system that would provide (anonymous) credentials to clients, and peers for
+-// them to participate in Hyperledger/fabric network. Clients use these
+-// credentials to authenticate their transactions, and peers use these credentials
+-// to authenticate transaction processing results (endorsements). While
+-// strongly connected to the transaction processing components of the systems,
+-// this interface aims to have membership services components defined, in such
+-// a way such that alternate implementations of this can be smoothly plugged in
+-// without modifying the core of transaction processing components of the system.
+-//
+-// This file includes Membership service provider interface that covers the
+-// needs of a peer membership service provider interface.
+-
+-// MSPManager is an interface defining a manager of one or more MSPs. This
+-// essentially acts as a mediator to MSP calls and routes MSP related calls
+-// to the appropriate MSP.
+-// This object is immutable, it is initialized once and never changed.
+-type MSPManager interface {
+-
+-	// IdentityDeserializer interface needs to be implemented by MSPManager
+-	IdentityDeserializer
+-
+-	// Setup the MSP manager instance according to configuration information
+-	Setup(msps []MSP) error
+-
+-	// GetMSPs Provides a list of Membership Service providers
+-	GetMSPs() (map[string]MSP, error)
+-}
+-
+-// MSP is the minimal Membership Service Provider Interface to be implemented
+-// to accommodate peer functionality
+-type MSP interface {
+-
+-	// IdentityDeserializer interface needs to be implemented by MSP
+-	IdentityDeserializer
+-
+-	// Setup the MSP instance according to configuration information
+-	Setup(config *msp.MSPConfig) error
+-
+-	// GetVersion returns the version of this MSP
+-	GetVersion() MSPVersion
+-
+-	// GetType returns the provider type
+-	GetType() ProviderType
+-
+-	// GetIdentifier returns the provider identifier
+-	GetIdentifier() (string, error)
+-
+-	// GetSigningIdentity returns a signing identity corresponding to the provided identifier
+-	GetSigningIdentity(identifier *IdentityIdentifier) (SigningIdentity, error)
+-
+-	// GetDefaultSigningIdentity returns the default signing identity
+-	GetDefaultSigningIdentity() (SigningIdentity, error)
+-
+-	// GetTLSRootCerts returns the TLS root certificates for this MSP
+-	GetTLSRootCerts() [][]byte
+-
+-	// GetTLSIntermediateCerts returns the TLS intermediate root certificates for this MSP
+-	GetTLSIntermediateCerts() [][]byte
+-
+-	// Validate checks whether the supplied identity is valid
+-	Validate(id Identity) error
+-
+-	// SatisfiesPrincipal checks whether the identity matches
+-	// the description supplied in MSPPrincipal. The check may
+-	// involve a byte-by-byte comparison (if the principal is
+-	// a serialized identity) or may require MSP validation
+-	SatisfiesPrincipal(id Identity, principal *msp.MSPPrincipal) error
+-}
+-
+-// OUIdentifier represents an organizational unit and
+-// its related chain of trust identifier.
+-type OUIdentifier struct {
+-	// CertifiersIdentifier is the hash of certificates chain of trust
+-	// related to this organizational unit
+-	CertifiersIdentifier []byte
+-	// OrganizationUnitIdentifier defines the organizational unit under the
+-	// MSP identified with MSPIdentifier
+-	OrganizationalUnitIdentifier string
+-}
+-
+ // From this point on, there are interfaces that are shared within the peer and client API
+ // of the membership service provider.
+ 
+-// Identity interface defining operations associated to a "certificate".
+-// That is, the public part of the identity could be thought to be a certificate,
+-// and offers solely signature verification capabilities. This is to be used
+-// at the peer side when verifying certificates that transactions are signed
+-// with, and verifying signatures that correspond to these certificates.///
+-type Identity interface {
+-
+-	// ExpiresAt returns the time at which the Identity expires.
+-	// If the returned time is the zero value, it implies
+-	// the Identity does not expire, or that its expiration
+-	// time is unknown
+-	ExpiresAt() time.Time
+-
+-	// GetIdentifier returns the identifier of that identity
+-	GetIdentifier() *IdentityIdentifier
+-
+-	// GetMSPIdentifier returns the MSP Id for this instance
+-	GetMSPIdentifier() string
+-
+-	// Validate uses the rules that govern this identity to validate it.
+-	// E.g., if it is a fabric TCert implemented as identity, validate
+-	// will check the TCert signature against the assumed root certificate
+-	// authority.
+-	Validate() error
+-
+-	// GetOrganizationalUnits returns zero or more organization units or
+-	// divisions this identity is related to as long as this is public
+-	// information. Certain MSP implementations may use attributes
+-	// that are publicly associated to this identity, or the identifier of
+-	// the root certificate authority that has provided signatures on this
+-	// certificate.
+-	// Examples:
+-	//  - if the identity is an x.509 certificate, this function returns one
+-	//    or more string which is encoded in the Subject's Distinguished Name
+-	//    of the type OU
+-	// TODO: For X.509 based identities, check if we need a dedicated type
+-	//       for OU where the Certificate OU is properly namespaced by the
+-	//       signer's identity
+-	GetOrganizationalUnits() []*OUIdentifier
+-
+-	// Anonymous returns true if this is an anonymous identity, false otherwise
+-	Anonymous() bool
+-
+-	// Verify a signature over some message using this identity as reference
+-	Verify(msg []byte, sig []byte) error
+-
+-	// Serialize converts an identity to bytes
+-	Serialize() ([]byte, error)
+-
+-	// SatisfiesPrincipal checks whether this instance matches
+-	// the description supplied in MSPPrincipal. The check may
+-	// involve a byte-by-byte comparison (if the principal is
+-	// a serialized identity) or may require MSP validation
+-	SatisfiesPrincipal(principal *msp.MSPPrincipal) error
+-}
+-
+-// SigningIdentity is an extension of Identity to cover signing capabilities.
+-// E.g., signing identity should be requested in the case of a client who wishes
+-// to sign transactions, or fabric endorser who wishes to sign proposal
+-// processing outcomes.
+-type SigningIdentity interface {
+-
+-	// Extends Identity
+-	Identity
+-
+-	// Sign the message
+-	Sign(msg []byte) ([]byte, error)
+-
+-	// GetPublicVersion returns the public parts of this identity
+-	GetPublicVersion() Identity
+-}
+-
+-// IdentityIdentifier is a holder for the identifier of a specific
+-// identity, naturally namespaced, by its provider identifier.
+-type IdentityIdentifier struct {
+-
+-	// The identifier of the associated membership service provider
+-	Mspid string
+-
+-	// The identifier for an identity within a provider
+-	Id string
+-}
+-
+ // ProviderType indicates the type of an identity provider
+ type ProviderType int
+ 
+@@ -215,11 +31,6 @@ var mspTypeStrings = map[ProviderType]string{
+ 	IDEMIX: "idemix",
+ }
+ 
+-var Options = map[string]NewOpts{
+-	ProviderTypeToString(FABRIC): &BCCSPNewOpts{NewBaseOpts: NewBaseOpts{Version: MSPv1_0}},
+-	ProviderTypeToString(IDEMIX): &IdemixNewOpts{NewBaseOpts: NewBaseOpts{Version: MSPv1_1}},
+-}
+-
+ // ProviderTypeToString returns a string that represents the ProviderType integer
+ func ProviderTypeToString(id ProviderType) string {
+ 	if res, found := mspTypeStrings[id]; found {
+@@ -228,3 +39,11 @@ func ProviderTypeToString(id ProviderType) string {
+ 
+ 	return ""
+ }
++
++const (
++	// SHA2 is an identifier for SHA2 hash family
++	SHA2 = "SHA2"
++
++	// SHA256
++	SHA256 = "SHA256"
++)
+\ No newline at end of file
+diff --git a/internal/github.com/hyperledger/fabric/protoutil/commonutils.go b/internal/github.com/hyperledger/fabric/protoutil/commonutils.go
+index 96f964f..784f8b3 100644
+--- a/internal/github.com/hyperledger/fabric/protoutil/commonutils.go
++++ b/internal/github.com/hyperledger/fabric/protoutil/commonutils.go
+@@ -176,19 +176,6 @@ func NewSignatureHeaderOrPanic(id identity.Serializer) *cb.SignatureHeader {
+ 	return signatureHeader
+ }
+ 
+-// SignOrPanic signs a message and panics on error.
+-func SignOrPanic(signer identity.Signer, msg []byte) []byte {
+-	if signer == nil {
+-		panic(errors.New("invalid signer. cannot be nil"))
+-	}
+-
+-	sigma, err := signer.Sign(msg)
+-	if err != nil {
+-		panic(fmt.Errorf("failed generating signature: %s", err))
+-	}
+-	return sigma
+-}
+-
+ // IsConfigBlock validates whenever given block contains configuration
+ // update transaction
+ func IsConfigBlock(block *cb.Block) bool {
+diff --git a/internal/github.com/hyperledger/fabric/protoutil/signeddata.go b/internal/github.com/hyperledger/fabric/protoutil/signeddata.go
+index 2e54579..73c7ed2 100644
+--- a/internal/github.com/hyperledger/fabric/protoutil/signeddata.go
++++ b/internal/github.com/hyperledger/fabric/protoutil/signeddata.go
+@@ -14,7 +14,8 @@ import (
+ 	"bytes"
+ 	"fmt"
+ 
+-	"github.com/gogo/protobuf/proto"
++	"github.com/golang/protobuf/proto"
++
+ 	"github.com/hyperledger/fabric-protos-go/common"
+ )
+ 
+-- 
+2.21.0 (Apple Git-122)
+
