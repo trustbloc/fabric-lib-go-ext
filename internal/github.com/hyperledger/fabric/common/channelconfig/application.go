@@ -11,10 +11,10 @@ Please review third_party pinning scripts and patches for more details.
 package channelconfig
 
 import (
-	"github.com/hyperledger/fabric/common/capabilities"
-	cb "github.com/hyperledger/fabric/protos/common"
-	pb "github.com/hyperledger/fabric/protos/peer"
+	cb "github.com/hyperledger/fabric-protos-go/common"
+	pb "github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/pkg/errors"
+	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/capabilities"
 )
 
 const (
@@ -38,7 +38,7 @@ type ApplicationConfig struct {
 }
 
 // NewApplicationConfig creates config from an Application config group
-func NewApplicationConfig(appGroup *cb.ConfigGroup, mspConfig *MSPConfigHandler) (*ApplicationConfig, error) {
+func NewApplicationConfig(appGroup *cb.ConfigGroup) (*ApplicationConfig, error) {
 	ac := &ApplicationConfig{
 		applicationOrgs: make(map[string]ApplicationOrg),
 		protos:          &ApplicationProtos{},
@@ -56,7 +56,7 @@ func NewApplicationConfig(appGroup *cb.ConfigGroup, mspConfig *MSPConfigHandler)
 
 	var err error
 	for orgName, orgGroup := range appGroup.Groups {
-		ac.applicationOrgs[orgName], err = NewApplicationOrgConfig(orgName, orgGroup, mspConfig)
+		ac.applicationOrgs[orgName], err = NewApplicationOrgConfig(orgName, orgGroup)
 		if err != nil {
 			return nil, err
 		}

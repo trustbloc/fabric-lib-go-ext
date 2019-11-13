@@ -17,10 +17,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hyperledger/fabric/common/capabilities"
-	cb "github.com/hyperledger/fabric/protos/common"
-	ab "github.com/hyperledger/fabric/protos/orderer"
+	cb "github.com/hyperledger/fabric-protos-go/common"
+	ab "github.com/hyperledger/fabric-protos-go/orderer"
 	"github.com/pkg/errors"
+	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/capabilities"
 )
 
 const (
@@ -84,7 +84,7 @@ func (oc *OrdererOrgConfig) Endpoints() []string {
 }
 
 // NewOrdererOrgConfig returns an orderer org config built from the given ConfigGroup.
-func NewOrdererOrgConfig(orgName string, orgGroup *cb.ConfigGroup, mspConfigHandler *MSPConfigHandler, channelCapabilities ChannelCapabilities) (*OrdererOrgConfig, error) {
+func NewOrdererOrgConfig(orgName string, orgGroup *cb.ConfigGroup, channelCapabilities ChannelCapabilities) (*OrdererOrgConfig, error) {
 	if len(orgGroup.Groups) > 0 {
 		return nil, fmt.Errorf("OrdererOrg config does not allow sub-groups")
 	}
@@ -106,9 +106,8 @@ func NewOrdererOrgConfig(orgName string, orgGroup *cb.ConfigGroup, mspConfigHand
 		name:   orgName,
 		protos: protos,
 		OrganizationConfig: &OrganizationConfig{
-			name:             orgName,
-			protos:           orgProtos,
-			mspConfigHandler: mspConfigHandler,
+			name:   orgName,
+			protos: orgProtos,
 		},
 	}
 
@@ -124,7 +123,7 @@ func (ooc *OrdererOrgConfig) Validate() error {
 }
 
 // NewOrdererConfig creates a new instance of the orderer config.
-func NewOrdererConfig(ordererGroup *cb.ConfigGroup, mspConfig *MSPConfigHandler, channelCapabilities ChannelCapabilities) (*OrdererConfig, error) {
+func NewOrdererConfig(ordererGroup *cb.ConfigGroup, channelCapabilities ChannelCapabilities) (*OrdererConfig, error) {
 	oc := &OrdererConfig{
 		protos: &OrdererProtos{},
 		orgs:   make(map[string]OrdererOrg),
@@ -140,7 +139,7 @@ func NewOrdererConfig(ordererGroup *cb.ConfigGroup, mspConfig *MSPConfigHandler,
 
 	for orgName, orgGroup := range ordererGroup.Groups {
 		var err error
-		if oc.orgs[orgName], err = NewOrdererOrgConfig(orgName, orgGroup, mspConfig, channelCapabilities); err != nil {
+		if oc.orgs[orgName], err = NewOrdererOrgConfig(orgName, orgGroup, channelCapabilities); err != nil {
 			return nil, err
 		}
 	}

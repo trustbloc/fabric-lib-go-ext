@@ -13,9 +13,8 @@ package channelconfig
 import (
 	"fmt"
 
-	"github.com/hyperledger/fabric/msp"
-	cb "github.com/hyperledger/fabric/protos/common"
-	mspprotos "github.com/hyperledger/fabric/protos/msp"
+	cb "github.com/hyperledger/fabric-protos-go/common"
+	mspprotos "github.com/hyperledger/fabric-protos-go/msp"
 	"github.com/pkg/errors"
 )
 
@@ -33,22 +32,19 @@ type OrganizationProtos struct {
 type OrganizationConfig struct {
 	protos *OrganizationProtos
 
-	mspConfigHandler *MSPConfigHandler
-	msp              msp.MSP
-	mspID            string
-	name             string
+	mspID string
+	name  string
 }
 
 // NewOrganizationConfig creates a new config for an organization
-func NewOrganizationConfig(name string, orgGroup *cb.ConfigGroup, mspConfigHandler *MSPConfigHandler) (*OrganizationConfig, error) {
+func NewOrganizationConfig(name string, orgGroup *cb.ConfigGroup) (*OrganizationConfig, error) {
 	if len(orgGroup.Groups) > 0 {
 		return nil, fmt.Errorf("organizations do not support sub-groups")
 	}
 
 	oc := &OrganizationConfig{
-		protos:           &OrganizationProtos{},
-		name:             name,
-		mspConfigHandler: mspConfigHandler,
+		protos: &OrganizationProtos{},
+		name:   name,
 	}
 
 	if err := DeserializeProtoValuesFromGroup(orgGroup, oc.protos); err != nil {
@@ -78,19 +74,5 @@ func (oc *OrganizationConfig) Validate() error {
 }
 
 func (oc *OrganizationConfig) validateMSP() error {
-	var err error
-
-	logger.Debugf("Setting up MSP for org %s", oc.name)
-	oc.msp, err = oc.mspConfigHandler.ProposeMSP(oc.protos.MSP)
-	if err != nil {
-		return err
-	}
-
-	oc.mspID, _ = oc.msp.GetIdentifier()
-
-	if oc.mspID == "" {
-		return fmt.Errorf("MSP for org %s has empty MSP ID", oc.name)
-	}
-
 	return nil
 }

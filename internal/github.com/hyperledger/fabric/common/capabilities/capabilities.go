@@ -11,9 +11,9 @@ Please review third_party pinning scripts and patches for more details.
 package capabilities
 
 import (
-	"github.com/hyperledger/fabric/common/flogging"
-	cb "github.com/hyperledger/fabric/protos/common"
+	cb "github.com/hyperledger/fabric-protos-go/common"
 	"github.com/pkg/errors"
+	flogging "github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/libpatch/logbridge"
 )
 
 var logger = flogging.MustGetLogger("common.capabilities")
