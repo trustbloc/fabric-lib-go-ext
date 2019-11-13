@@ -14,10 +14,10 @@ import (
 	"fmt"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/hyperledger/fabric/common/tools/protolator/protoext/ordererext"
-	"github.com/hyperledger/fabric/common/tools/protolator/protoext/peerext"
-	"github.com/hyperledger/fabric/protos/common"
-	"github.com/hyperledger/fabric/protos/msp"
+	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/hyperledger/fabric-protos-go/msp"
+	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/tools/protolator/protoext/ordererext"
+	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/tools/protolator/protoext/peerext"
 
 	"github.com/pkg/errors"
 )

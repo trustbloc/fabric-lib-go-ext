@@ -7,10 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 Notice: This file has been modified for TrustBloc Fabric Lib Go EXT usage.
 Please review third_party pinning scripts and patches for more details.
 */
-/*
-Notice: This file has been modified for TrustBloc Fabric Lib Go EXT usage.
-Please review third_party pinning scripts and patches for more details.
-*/
 
 package protoutil
 
@@ -21,9 +17,9 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/timestamp"
-	"github.com/hyperledger/fabric/internal/pkg/identity"
-	cb "github.com/hyperledger/fabric/protos/common"
+	cb "github.com/hyperledger/fabric-protos-go/common"
 	"github.com/pkg/errors"
+	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/libinternal/pkg/identity"
 )
 
 // MarshalOrPanic serializes a protobuf message and panics if this
@@ -178,19 +174,6 @@ func NewSignatureHeaderOrPanic(id identity.Serializer) *cb.SignatureHeader {
 	}
 
 	return signatureHeader
-}
-
-// SignOrPanic signs a message and panics on error.
-func SignOrPanic(signer identity.Signer, msg []byte) []byte {
-	if signer == nil {
-		panic(errors.New("invalid signer. cannot be nil"))
-	}
-
-	sigma, err := signer.Sign(msg)
-	if err != nil {
-		panic(fmt.Errorf("failed generating signature: %s", err))
-	}
-	return sigma
 }
 
 // IsConfigBlock validates whenever given block contains configuration

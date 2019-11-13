@@ -1,12 +1,10 @@
-From 55468520b732721d7cd10f94fd1481e1ad61fef9 Mon Sep 17 00:00:00 2001
+From 2c633ad9b6e733adf8b766394dc44fc4cd3131cc Mon Sep 17 00:00:00 2001
 From: Aleksandar Likic <aleksandar.likic@securekey.com>
 Date: Wed, 13 Nov 2019 03:53:49 -0500
 Subject: [PATCH] Fix upstream.
 
 Signed-off-by: Aleksandar Likic <aleksandar.likic@securekey.com>
 ---
- go.mod                                        |  10 +-
- go.sum                                        |  29 ++-
  .../fabric/common/capabilities/application.go |   2 +-
  .../common/capabilities/capabilities.go       |   4 +-
  .../fabric/common/capabilities/channel.go     |   4 +-
@@ -28,7 +26,7 @@ Signed-off-by: Aleksandar Likic <aleksandar.likic@securekey.com>
  .../fabric/common/configtx/configtx.go        |   2 +-
  .../fabric/common/genesis/genesis.go          |   4 +-
  .../common/policies/implicitmetaparser.go     |   2 +-
- .../fabric/common/policies/policy.go          |  13 +-
+ .../fabric/common/policies/policy.go          | 217 +---------------
  .../fabric/common/policies/util.go            |   4 +-
  .../fabric/common/tools/protolator/json.go    |   2 +-
  .../protolator/protoext/commonext/common.go   |   6 +-
@@ -44,13 +42,13 @@ Signed-off-by: Aleksandar Likic <aleksandar.likic@securekey.com>
  .../protolator/protoext/peerext/proposal.go   |   4 +-
  .../protoext/peerext/proposal_response.go     |   2 +-
  .../protoext/peerext/transaction.go           |   4 +-
- .../hyperledger/fabric/common/util/utils.go   |   8 +-
+ .../hyperledger/fabric/common/util/utils.go   |  48 +---
  .../fabric/common/viperutil/config_util.go    |   2 +-
  .../hyperledger/fabric/core/config/config.go  | 128 ----------
- .../txmgmt/rwsetutil/rwset_proto_util.go      |   6 +-
+ .../txmgmt/rwsetutil/rwset_proto_util.go      |  83 +------
  .../ledger/kvledger/txmgmt/version/version.go |  27 ++
- .../core/ledger/util/txvalidationflags.go     |   2 +-
- .../fabric/internal/protoutil/commonutils.go  |   8 -
+ .../core/ledger/util/txvalidationflags.go     |  13 +-
+ .../fabric/internal/protoutil/commonutils.go  |  25 ++
  .../configtxgen/encoder/encoder.go            |  28 +--
  .../configtxgen/localconfig/config.go         |  94 +++----
  .../configtxlator/update/update.go            |   4 +-
@@ -59,135 +57,18 @@ Signed-off-by: Aleksandar Likic <aleksandar.likic@securekey.com>
  .../hyperledger/fabric/msp/factory.go         |  62 -----
  .../github.com/hyperledger/fabric/msp/msp.go  | 197 +--------------
  .../fabric/protoutil/blockutils.go            |   2 +-
- .../fabric/protoutil/commonutils.go           |  17 +-
+ .../fabric/protoutil/commonutils.go           |  21 +-
  .../fabric/protoutil/configtxutils.go         |   2 +-
  .../hyperledger/fabric/protoutil/proputils.go |   4 +-
  .../fabric/protoutil/signeddata.go            |   5 +-
  .../hyperledger/fabric/protoutil/txutils.go   |   6 +-
  .../fabric/protoutil/unmarshalers.go          |  10 +-
- 60 files changed, 325 insertions(+), 1094 deletions(-)
+ 58 files changed, 326 insertions(+), 1407 deletions(-)
  delete mode 100644 internal/github.com/hyperledger/fabric/core/config/config.go
  create mode 100644 internal/github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/version/version.go
+ create mode 100644 internal/github.com/hyperledger/fabric/internal/protoutil/commonutils.go
  create mode 100644 internal/github.com/hyperledger/fabric/libpatch/logbridge/logbridge.go
 
-diff --git a/go.mod b/go.mod
-index 3561719..45994a1 100644
---- a/go.mod
-+++ b/go.mod
-@@ -8,11 +8,11 @@ require (
- 	github.com/Knetic/govaluate v3.0.0+incompatible
- 	github.com/Shopify/sarama v1.23.1
- 	github.com/fsnotify/fsnotify v1.4.7 // indirect
--	github.com/gogo/protobuf v1.3.1
- 	github.com/golang/protobuf v1.3.2
- 	github.com/hashicorp/go-version v1.2.0
- 	github.com/hashicorp/hcl v1.0.0 // indirect
- 	github.com/hyperledger/fabric-protos-go v0.0.0-20190821180310-6b6ac9042dfd
-+	github.com/kr/pretty v0.1.0 // indirect
- 	github.com/magiconair/properties v1.8.1 // indirect
- 	github.com/mitchellh/mapstructure v0.0.0-20180220230111-00c29f56e238
- 	github.com/pelletier/go-toml v1.5.0 // indirect
-@@ -23,10 +23,12 @@ require (
- 	github.com/spf13/pflag v1.0.5 // indirect
- 	github.com/spf13/viper v1.0.2
- 	github.com/stretchr/testify v1.4.0
--	golang.org/x/crypto v0.0.0-20190701094942-4def268fd1a4 // indirect
--	golang.org/x/net v0.0.0-20190613194153-d28f0bde5980 // indirect
--	golang.org/x/sys v0.0.0-20190710143415-6ec70d6a5542 // indirect
-+	golang.org/x/crypto v0.0.0-20190927123631-a832865fa7ad // indirect
-+	golang.org/x/net v0.0.0-20190620200207-3b0461eec859 // indirect
-+	golang.org/x/sys v0.0.0-20190916202348-b4ddaad3f8a3 // indirect
-+	golang.org/x/text v0.3.2 // indirect
- 	google.golang.org/genproto v0.0.0-20190819201941-24fa4b261c55 // indirect
-+	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
- 	gopkg.in/jcmturner/goidentity.v3 v3.0.0 // indirect
- 	gopkg.in/yaml.v2 v2.2.4
- )
-diff --git a/go.sum b/go.sum
-index 47e3124..d3d9afb 100644
---- a/go.sum
-+++ b/go.sum
-@@ -21,8 +21,6 @@ github.com/eapache/queue v1.1.0 h1:YOEu7KNc61ntiQlcEeUIoDTJ2o8mQznoNvUhiigpIqc=
- github.com/eapache/queue v1.1.0/go.mod h1:6eCeP0CKFpHLu8blIFXhExK/dRa7WDZfr6jVFPTqq+I=
- github.com/fsnotify/fsnotify v1.4.7 h1:IXs+QLmnXW2CcXuY+8Mzv/fWEsPGWxqefPtCP5CnV9I=
- github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=
--github.com/gogo/protobuf v1.3.1 h1:DqDEcV5aeaTmdFBePNpYsp3FlcVH/2ISVVM9Qf8PSls=
--github.com/gogo/protobuf v1.3.1/go.mod h1:SlYgWuQ5SjCEi6WLHjHCa1yvBfUnHcTbrrZtXPKa29o=
- github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b h1:VKtxabqXZkF25pY9ekfRL6a582T4P37/31XEstQ5p58=
- github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b/go.mod h1:SBH7ygxi8pfUlaOkMMuAQtPIUF8ecWP5IEl/CR7VP2Q=
- github.com/golang/mock v1.1.1/go.mod h1:oTYuIxOrZwtPieC+H1uAHpcLFnEyAGVDL/k47Jfbm0A=
-@@ -42,8 +40,11 @@ github.com/hyperledger/fabric-protos-go v0.0.0-20190821180310-6b6ac9042dfd h1:z0
- github.com/hyperledger/fabric-protos-go v0.0.0-20190821180310-6b6ac9042dfd/go.mod h1:xVYTjK4DtZRBxZ2D9aE4y6AbLaPwue2o/criQyQbVD0=
- github.com/jcmturner/gofork v0.0.0-20190328161633-dc7c13fece03 h1:FUwcHNlEqkqLjLBdCp5PRlCFijNjvcYANOZXzCfXwCM=
- github.com/jcmturner/gofork v0.0.0-20190328161633-dc7c13fece03/go.mod h1:MK8+TM0La+2rjBD4jE12Kj1pCCxK7d2LK/UM3ncEo0o=
--github.com/kisielk/errcheck v1.2.0/go.mod h1:/BMXB+zMLi60iA8Vv6Ksmxu/1UDYcXs4uQLJ+jE2L00=
--github.com/kisielk/gotool v1.0.0/go.mod h1:XhKaO+MFFWcvkIS/tQcRk01m1F5IRFswLeQ+oQHNcck=
-+github.com/kr/pretty v0.1.0 h1:L/CwN0zerZDmRFUapSPitk6f+Q3+0za1rQkzVuMiMFI=
-+github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORNo=
-+github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
-+github.com/kr/text v0.1.0 h1:45sCR5RtlFHMR4UwH9sdQ5TC8v0qDQCHnXt+kaKSTVE=
-+github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
- github.com/magiconair/properties v1.8.1 h1:ZC2Vc7/ZFkGmsVC9KvOjumD+G5lXy2RtTKyzRKO2BQ4=
- github.com/magiconair/properties v1.8.1/go.mod h1:PppfXfuXeibc/6YijjN8zIbojt8czPbwD3XqdrwzmxQ=
- github.com/mitchellh/mapstructure v0.0.0-20180220230111-00c29f56e238 h1:+MZW2uvHgN8kYvksEN3f7eFL2wpzk0GxmlFsMybWc7E=
-@@ -69,6 +70,7 @@ github.com/spf13/pflag v1.0.5 h1:iy+VFUOCP1a+8yFto/drg2CJ5u0yRoB7fZw3DKv/JXA=
- github.com/spf13/pflag v1.0.5/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg=
- github.com/spf13/viper v1.0.2 h1:Ncr3ZIuJn322w2k1qmzXDnkLAdQMlJqBa9kfAH+irso=
- github.com/spf13/viper v1.0.2/go.mod h1:A8kyI5cUJhb8N+3pkfONlcEcZbueH6nhAm0Fq7SrnBM=
-+github.com/stretchr/objx v0.1.0 h1:4G4v2dO3VZwixGIRoQ5Lfboy6nUhCyYzaqnIAPPhYs4=
- github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
- github.com/stretchr/testify v1.2.2/go.mod h1:a8OnRcib4nhh0OaRAV+Yts87kKdq0PP7pXfy6kDkUVs=
- github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UVUgZn+9EI=
-@@ -78,8 +80,8 @@ github.com/xdg/scram v0.0.0-20180814205039-7eeb5667e42c/go.mod h1:lB8K/P019DLNhe
- github.com/xdg/stringprep v1.0.0/go.mod h1:Jhud4/sHMO4oL310DaZAKk9ZaJ08SJfe+sJh0HrGL1Y=
- golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
- golang.org/x/crypto v0.0.0-20190404164418-38d8ce5564a5/go.mod h1:WFFai1msRO1wXaEeE5yQxYXgSfI8pQAWXbQop6sCtWE=
--golang.org/x/crypto v0.0.0-20190701094942-4def268fd1a4 h1:HuIa8hRrWRSrqYzx1qI49NNxhdi2PrY7gxVSq1JjLDc=
--golang.org/x/crypto v0.0.0-20190701094942-4def268fd1a4/go.mod h1:yigFU9vqHzYiE8UmvKecakEJjdnWj3jj499lnFckfCI=
-+golang.org/x/crypto v0.0.0-20190927123631-a832865fa7ad h1:5E5raQxcv+6CZ11RrBYQe5WRbUIWpScjh0kvHZkZIrQ=
-+golang.org/x/crypto v0.0.0-20190927123631-a832865fa7ad/go.mod h1:yigFU9vqHzYiE8UmvKecakEJjdnWj3jj499lnFckfCI=
- golang.org/x/exp v0.0.0-20190121172915-509febef88a4/go.mod h1:CJ0aWSM057203Lf6IL+f9T1iT9GByDxfZKAQTCR3kQA=
- golang.org/x/lint v0.0.0-20181026193005-c67002cb31c3/go.mod h1:UVdnD1Gm6xHRNCYTkRU2/jEulfH38KcIWyp/GAMgvoE=
- golang.org/x/lint v0.0.0-20190227174305-5b3e6a55c961/go.mod h1:wehouNa3lNwaWXcvxsM5YxQ5yQlVC4a0KAMCusXpPoU=
-@@ -89,21 +91,24 @@ golang.org/x/net v0.0.0-20180826012351-8a410e7b638d/go.mod h1:mL1N/T3taQHkDXs73r
- golang.org/x/net v0.0.0-20190213061140-3a22650c66bd/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
- golang.org/x/net v0.0.0-20190311183353-d8887717615a/go.mod h1:t9HGtf8HONx5eT2rtn7q6eTqICYqUVnKs3thJo3Qplg=
- golang.org/x/net v0.0.0-20190404232315-eb5bcb51f2a3/go.mod h1:t9HGtf8HONx5eT2rtn7q6eTqICYqUVnKs3thJo3Qplg=
--golang.org/x/net v0.0.0-20190613194153-d28f0bde5980 h1:dfGZHvZk057jK2MCeWus/TowKpJ8y4AmooUzdBSR9GU=
--golang.org/x/net v0.0.0-20190613194153-d28f0bde5980/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
-+golang.org/x/net v0.0.0-20190620200207-3b0461eec859 h1:R/3boaszxrf1GEUWTVDzSKVwLmSJpwZ1yqXm8j0v2QI=
-+golang.org/x/net v0.0.0-20190620200207-3b0461eec859/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
- golang.org/x/oauth2 v0.0.0-20180821212333-d2e6202438be/go.mod h1:N/0e6XlmueqKjAGxoOufVs8QHGRruUQn6yWY3a++T0U=
- golang.org/x/sync v0.0.0-20180314180146-1d60e4601c6f/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
- golang.org/x/sync v0.0.0-20181108010431-42b317875d0f/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
-+golang.org/x/sync v0.0.0-20190423024810-112230192c58 h1:8gQV6CLnAEikrhgkHFbMAEhagSSnXWGV915qUMm9mrU=
- golang.org/x/sync v0.0.0-20190423024810-112230192c58/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
- golang.org/x/sys v0.0.0-20180830151530-49385e6e1522/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
- golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
- golang.org/x/sys v0.0.0-20190403152447-81d4e9dc473e/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
- golang.org/x/sys v0.0.0-20190412213103-97732733099d/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
--golang.org/x/sys v0.0.0-20190710143415-6ec70d6a5542 h1:6ZQFf1D2YYDDI7eSwW8adlkkavTB9sw5I24FVtEvNUQ=
--golang.org/x/sys v0.0.0-20190710143415-6ec70d6a5542/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
-+golang.org/x/sys v0.0.0-20190916202348-b4ddaad3f8a3 h1:7TYNF4UdlohbFwpNH04CoPMp1cHUZgO1Ebq5r2hIjfo=
-+golang.org/x/sys v0.0.0-20190916202348-b4ddaad3f8a3/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
- golang.org/x/text v0.3.0 h1:g61tztE5qeGQ89tm6NTjjM9VPIm088od1l6aSorWRWg=
- golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
--golang.org/x/tools v0.0.0-20181030221726-6c7e314b6563/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
-+golang.org/x/text v0.3.2 h1:tW2bmiBqwgJj/UpqtC8EpXEZVYOwU0yG4iWbprSVAcs=
-+golang.org/x/text v0.3.2/go.mod h1:bEr9sfX3Q8Zfm5fL9x+3itogRgK3+ptLWKqgva+5dAk=
-+golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
- golang.org/x/tools v0.0.0-20190114222345-bf090417da8b/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
- golang.org/x/tools v0.0.0-20190226205152-f727befe758c/go.mod h1:9Yl7xja0Znq3iFh3HoIrodX9oNMXvdceNzlUR8zjMvY=
- golang.org/x/tools v0.0.0-20190311212946-11955173bddd/go.mod h1:LCzVGOaR6xXOjkQ3onu1FJEFr0SW1gC7cKk1uF8kGRs=
-@@ -118,6 +123,8 @@ google.golang.org/grpc v1.23.0 h1:AzbTB6ux+okLTzP8Ru1Xs41C303zdcfEht7MQnYJt5A=
- google.golang.org/grpc v1.23.0/go.mod h1:Y5yQAOtifL1yxbo5wqy6BxZv8vAUGQwXBOALyacEbxg=
- gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=
- gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
-+gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 h1:qIbj1fsPNlZgppZ+VLlY7N33q108Sa+fhmuc+sWQYwY=
-+gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
- gopkg.in/jcmturner/aescts.v1 v1.0.1 h1:cVVZBK2b1zY26haWB4vbBiZrfFQnfbTVrE3xZq6hrEw=
- gopkg.in/jcmturner/aescts.v1 v1.0.1/go.mod h1:nsR8qBOg+OucoIW+WMhB3GspUQXq9XorLnQb9XtvcOo=
- gopkg.in/jcmturner/dnsutils.v1 v1.0.1 h1:cIuC1OLRGZrld+16ZJvvZxVJeKPsvd5eUIvxfoN5hSM=
 diff --git a/internal/github.com/hyperledger/fabric/common/capabilities/application.go b/internal/github.com/hyperledger/fabric/common/capabilities/application.go
 index d06dce9..b8d61db 100644
 --- a/internal/github.com/hyperledger/fabric/common/capabilities/application.go
@@ -1089,7 +970,7 @@ index 9425623..81e448a 100644
  )
  
 diff --git a/internal/github.com/hyperledger/fabric/common/policies/policy.go b/internal/github.com/hyperledger/fabric/common/policies/policy.go
-index 4116cf9..0c01954 100644
+index c9ba844..0c01954 100644
 --- a/internal/github.com/hyperledger/fabric/common/policies/policy.go
 +++ b/internal/github.com/hyperledger/fabric/common/policies/policy.go
 @@ -11,16 +11,11 @@ Please review third_party pinning scripts and patches for more details.
@@ -1113,6 +994,234 @@ index 4116cf9..0c01954 100644
  )
  
  const (
+@@ -72,58 +67,6 @@ type PrincipalSet []*msp.MSPPrincipal
+ // PrincipalSets aggregates PrincipalSets
+ type PrincipalSets []PrincipalSet
+ 
+-// ContainingOnly returns PrincipalSets that contain only principals of the given predicate
+-func (psSets PrincipalSets) ContainingOnly(f func(*msp.MSPPrincipal) bool) PrincipalSets {
+-	var res PrincipalSets
+-	for _, set := range psSets {
+-		if !set.ContainingOnly(f) {
+-			continue
+-		}
+-		res = append(res, set)
+-	}
+-	return res
+-}
+-
+-// ContainingOnly returns whether the given PrincipalSet contains only Principals
+-// that satisfy the given predicate
+-func (ps PrincipalSet) ContainingOnly(f func(*msp.MSPPrincipal) bool) bool {
+-	for _, principal := range ps {
+-		if !f(principal) {
+-			return false
+-		}
+-	}
+-	return true
+-}
+-
+-// UniqueSet returns a histogram that is induced by the PrincipalSet
+-func (ps PrincipalSet) UniqueSet() map[*msp.MSPPrincipal]int {
+-	// Create a histogram that holds the MSPPrincipals and counts them
+-	histogram := make(map[struct {
+-		cls       int32
+-		principal string
+-	}]int)
+-	// Now, populate the histogram
+-	for _, principal := range ps {
+-		key := struct {
+-			cls       int32
+-			principal string
+-		}{
+-			cls:       int32(principal.PrincipalClassification),
+-			principal: string(principal.Principal),
+-		}
+-		histogram[key]++
+-	}
+-	// Finally, convert to a histogram of MSPPrincipal pointers
+-	res := make(map[*msp.MSPPrincipal]int)
+-	for principal, count := range histogram {
+-		res[&msp.MSPPrincipal{
+-			PrincipalClassification: msp.MSPPrincipal_Classification(principal.cls),
+-			Principal:               []byte(principal.principal),
+-		}] = count
+-	}
+-	return res
+-}
+-
+ // Converter represents a policy
+ // which may be translated into a SignaturePolicyEnvelope
+ type Converter interface {
+@@ -168,8 +111,6 @@ type ChannelPolicyManagerGetter interface {
+ // PolicyManagerGetterFunc is a function adapater for ChannelPolicyManagerGetter.
+ type PolicyManagerGetterFunc func(channelID string) Manager
+ 
+-func (p PolicyManagerGetterFunc) Manager(channelID string) Manager { return p(channelID) }
+-
+ // ManagerImpl is an implementation of Manager and configtx.ConfigHandler
+ // In general, it should only be referenced as an Impl for the configtx.ConfigManager
+ type ManagerImpl struct {
+@@ -178,159 +119,9 @@ type ManagerImpl struct {
+ 	managers map[string]*ManagerImpl
+ }
+ 
+-// NewManagerImpl creates a new ManagerImpl with the given CryptoHelper
+-func NewManagerImpl(path string, providers map[int32]Provider, root *cb.ConfigGroup) (*ManagerImpl, error) {
+-	var err error
+-	_, ok := providers[int32(cb.Policy_IMPLICIT_META)]
+-	if ok {
+-		logger.Panicf("ImplicitMetaPolicy type must be provider by the policy manager")
+-	}
+-
+-	managers := make(map[string]*ManagerImpl)
+-
+-	for groupName, group := range root.Groups {
+-		managers[groupName], err = NewManagerImpl(path+PathSeparator+groupName, providers, group)
+-		if err != nil {
+-			return nil, err
+-		}
+-	}
+-
+-	policies := make(map[string]Policy)
+-	for policyName, configPolicy := range root.Policies {
+-		policy := configPolicy.Policy
+-		if policy == nil {
+-			return nil, fmt.Errorf("policy %s at path %s was nil", policyName, path)
+-		}
+-
+-		var cPolicy Policy
+-
+-		if policy.Type == int32(cb.Policy_IMPLICIT_META) {
+-			imp, err := NewImplicitMetaPolicy(policy.Value, managers)
+-			if err != nil {
+-				return nil, errors.Wrapf(err, "implicit policy %s at path %s did not compile", policyName, path)
+-			}
+-			cPolicy = imp
+-		} else {
+-			provider, ok := providers[int32(policy.Type)]
+-			if !ok {
+-				return nil, fmt.Errorf("policy %s at path %s has unknown policy type: %v", policyName, path, policy.Type)
+-			}
+-
+-			var err error
+-			cPolicy, _, err = provider.NewPolicy(policy.Value)
+-			if err != nil {
+-				return nil, errors.Wrapf(err, "policy %s at path %s did not compile", policyName, path)
+-			}
+-		}
+-
+-		policies[policyName] = cPolicy
+-
+-		logger.Debugf("Proposed new policy %s for %s", policyName, path)
+-	}
+-
+-	for groupName, manager := range managers {
+-		for policyName, policy := range manager.Policies {
+-			policies[groupName+PathSeparator+policyName] = policy
+-		}
+-	}
+-
+-	return &ManagerImpl{
+-		path:     path,
+-		Policies: policies,
+-		managers: managers,
+-	}, nil
+-}
+-
+ type rejectPolicy string
+ 
+-func (rp rejectPolicy) Evaluate(signedData []*protoutil.SignedData) error {
+-	return errors.Errorf("no such policy: '%s'", rp)
+-}
+-
+-// Manager returns the sub-policy manager for a given path and whether it exists
+-func (pm *ManagerImpl) Manager(path []string) (Manager, bool) {
+-	logger.Debugf("Manager %s looking up path %v", pm.path, path)
+-	for manager := range pm.managers {
+-		logger.Debugf("Manager %s has managers %s", pm.path, manager)
+-	}
+-	if len(path) == 0 {
+-		return pm, true
+-	}
+-
+-	m, ok := pm.managers[path[0]]
+-	if !ok {
+-		return nil, false
+-	}
+-
+-	return m.Manager(path[1:])
+-}
+-
+ type PolicyLogger struct {
+ 	Policy     Policy
+ 	policyName string
+ }
+-
+-func (pl *PolicyLogger) Evaluate(signatureSet []*protoutil.SignedData) error {
+-	if logger.IsEnabledFor(zapcore.DebugLevel) {
+-		logger.Debugf("== Evaluating %T Policy %s ==", pl.Policy, pl.policyName)
+-		defer logger.Debugf("== Done Evaluating %T Policy %s", pl.Policy, pl.policyName)
+-	}
+-
+-	err := pl.Policy.Evaluate(signatureSet)
+-	if err != nil {
+-		logger.Debugf("Signature set did not satisfy policy %s", pl.policyName)
+-	} else {
+-		logger.Debugf("Signature set satisfies policy %s", pl.policyName)
+-	}
+-	return err
+-}
+-
+-func (pl *PolicyLogger) Convert() (*cb.SignaturePolicyEnvelope, error) {
+-	logger.Debugf("== Converting %T Policy %s ==", pl.Policy, pl.policyName)
+-
+-	convertiblePolicy, ok := pl.Policy.(Converter)
+-	if !ok {
+-		logger.Errorf("policy (name='%s',type='%T') is not convertible to SignaturePolicyEnvelope", pl.policyName, pl.Policy)
+-		return nil, errors.Errorf("policy (name='%s',type='%T') is not convertible to SignaturePolicyEnvelope", pl.policyName, pl.Policy)
+-	}
+-
+-	cp, err := convertiblePolicy.Convert()
+-	if err != nil {
+-		logger.Errorf("== Error Converting %T Policy %s, err %s", pl.Policy, pl.policyName, err.Error())
+-	} else {
+-		logger.Debugf("== Done Converting %T Policy %s", pl.Policy, pl.policyName)
+-	}
+-
+-	return cp, err
+-}
+-
+-// GetPolicy returns a policy and true if it was the policy requested, or false if it is the default reject policy
+-func (pm *ManagerImpl) GetPolicy(id string) (Policy, bool) {
+-	if id == "" {
+-		logger.Errorf("Returning dummy reject all policy because no policy ID supplied")
+-		return rejectPolicy(id), false
+-	}
+-	var relpath string
+-
+-	if strings.HasPrefix(id, PathSeparator) {
+-		if !strings.HasPrefix(id, PathSeparator+pm.path) {
+-			logger.Debugf("Requested absolute policy %s from %s, returning rejectAll", id, pm.path)
+-			return rejectPolicy(id), false
+-		}
+-		// strip off the leading slash, the path, and the trailing slash
+-		relpath = id[1+len(pm.path)+1:]
+-	} else {
+-		relpath = id
+-	}
+-
+-	policy, ok := pm.Policies[relpath]
+-	if !ok {
+-		logger.Debugf("Returning dummy reject all policy because %s could not be found in %s/%s", id, pm.path, relpath)
+-		return rejectPolicy(relpath), false
+-	}
+-
+-	return &PolicyLogger{
+-		Policy:     policy,
+-		policyName: PathSeparator + pm.path + PathSeparator + relpath,
+-	}, true
+-}
 diff --git a/internal/github.com/hyperledger/fabric/common/policies/util.go b/internal/github.com/hyperledger/fabric/common/policies/util.go
 index 4a91cd0..3c08751 100644
 --- a/internal/github.com/hyperledger/fabric/common/policies/util.go
@@ -1355,10 +1464,10 @@ index 4caf634..6ac9725 100644
  
  type TransactionAction struct { // nothing was testing this
 diff --git a/internal/github.com/hyperledger/fabric/common/util/utils.go b/internal/github.com/hyperledger/fabric/common/util/utils.go
-index 80ffc7d..30a4c94 100644
+index 61c148f..30a4c94 100644
 --- a/internal/github.com/hyperledger/fabric/common/util/utils.go
 +++ b/internal/github.com/hyperledger/fabric/common/util/utils.go
-@@ -12,13 +12,9 @@ package util
+@@ -12,33 +12,11 @@ package util
  
  import (
  	"crypto/rand"
@@ -1372,12 +1481,58 @@ index 80ffc7d..30a4c94 100644
 -	"github.com/hyperledger/fabric/bccsp/factory"
  )
  
+-// ComputeSHA256 returns SHA2-256 on data
+-func ComputeSHA256(data []byte) (hash []byte) {
+-	hash, err := factory.GetDefault().Hash(data, &bccsp.SHA256Opts{})
+-	if err != nil {
+-		panic(fmt.Errorf("Failed computing SHA256 on [% x]", data))
+-	}
+-	return
+-}
+-
+-// ComputeSHA3256 returns SHA3-256 on data
+-func ComputeSHA3256(data []byte) (hash []byte) {
+-	hash, err := factory.GetDefault().Hash(data, &bccsp.SHA3_256Opts{})
+-	if err != nil {
+-		panic(fmt.Errorf("Failed computing SHA3_256 on [% x]", data))
+-	}
+-	return
+-}
+-
  // GenerateBytesUUID returns a UUID based on RFC 4122 returning the generated bytes
-@@ -48,8 +44,6 @@ func idBytesToStr(id []byte) string {
+ func GenerateBytesUUID() []byte {
+ 	uuid := make([]byte, 16)
+@@ -62,34 +40,10 @@ func GenerateUUID() string {
+ 	return idBytesToStr(uuid)
+ }
+ 
+-// CreateUtcTimestamp returns a google/protobuf/Timestamp in UTC
+-func CreateUtcTimestamp() *timestamp.Timestamp {
+-	now := time.Now().UTC()
+-	secs := now.Unix()
+-	nanos := int32(now.UnixNano() - (secs * 1000000000))
+-	return &(timestamp.Timestamp{Seconds: secs, Nanos: nanos})
+-}
+-
+ func idBytesToStr(id []byte) string {
  	return fmt.Sprintf("%x-%x-%x-%x-%x", id[0:4], id[4:6], id[6:8], id[8:10], id[10:])
  }
  
+-// ToChaincodeArgs converts string args to []byte args
+-func ToChaincodeArgs(args ...string) [][]byte {
+-	bargs := make([][]byte, len(args))
+-	for i, arg := range args {
+-		bargs[i] = []byte(arg)
+-	}
+-	return bargs
+-}
+-
 -const testchainid = "testchainid"
+-
+-//GetTestChainID returns the CHAINID constant in use by orderer
+-func GetTestChainID() string {
+-	return testchainid
+-}
 -
  // ConcatenateBytes is useful for combining multiple arrays of bytes, especially for
  // signatures or digests over multiple fields
@@ -1533,7 +1688,7 @@ index 3e97783..0000000
 -	return nil
 -}
 diff --git a/internal/github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/rwsetutil/rwset_proto_util.go b/internal/github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/rwsetutil/rwset_proto_util.go
-index bcb4b00..a24deb9 100644
+index 6c382b8..a24deb9 100644
 --- a/internal/github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/rwsetutil/rwset_proto_util.go
 +++ b/internal/github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/rwsetutil/rwset_proto_util.go
 @@ -22,10 +22,8 @@ package rwsetutil
@@ -1549,6 +1704,101 @@ index bcb4b00..a24deb9 100644
  )
  
  /////////////////////////////////////////////////////////////////
+@@ -51,32 +49,6 @@ type CollHashedRwSet struct {
+ 	PvtRwSetHash   []byte
+ }
+ 
+-// GetPvtDataHash returns the PvtRwSetHash for a given namespace and collection
+-func (txRwSet *TxRwSet) GetPvtDataHash(ns, coll string) []byte {
+-	// we could build and use a map to reduce the number of lookup
+-	// in the future call. However, we decided to defer such optimization
+-	// due to the following assumptions (mainly to avoid additioan LOC).
+-	// we assume that the number of namespaces and collections in a txRWSet
+-	// to be very minimal (in a single digit),
+-	for _, nsRwSet := range txRwSet.NsRwSets {
+-		if nsRwSet.NameSpace != ns {
+-			continue
+-		}
+-		return nsRwSet.getPvtDataHash(coll)
+-	}
+-	return nil
+-}
+-
+-func (nsRwSet *NsRwSet) getPvtDataHash(coll string) []byte {
+-	for _, collHashedRwSet := range nsRwSet.CollHashedRwSets {
+-		if collHashedRwSet.CollectionName != coll {
+-			continue
+-		}
+-		return collHashedRwSet.PvtRwSetHash
+-	}
+-	return nil
+-}
+-
+ /////////////////////////////////////////////////////////////////
+ // Messages related to PRIVATE read-write set
+ /////////////////////////////////////////////////////////////////
+@@ -236,19 +208,6 @@ func collHashedRwSetFromProtoMsg(protoMsg *rwset.CollectionHashedReadWriteSet) (
+ 	return colHashedRwSet, nil
+ }
+ 
+-func (txRwSet *TxRwSet) NumCollections() int {
+-	if txRwSet == nil {
+-		return 0
+-	}
+-	numColls := 0
+-	for _, nsRwset := range txRwSet.NsRwSets {
+-		for range nsRwset.CollHashedRwSets {
+-			numColls++
+-		}
+-	}
+-	return numColls
+-}
+-
+ ///////////////////////////////////////////////////////////////////////////////
+ // functions for private read-write set
+ ///////////////////////////////////////////////////////////////////////////////
+@@ -321,41 +280,3 @@ func collPvtRwSetFromProtoMsg(protoMsg *rwset.CollectionPvtReadWriteSet) (*CollP
+ 	}
+ 	return collPvtRwSet, nil
+ }
+-
+-// NewKVRead helps constructing proto message kvrwset.KVRead
+-func NewKVRead(key string, version *version.Height) *kvrwset.KVRead {
+-	return &kvrwset.KVRead{Key: key, Version: newProtoVersion(version)}
+-}
+-
+-// NewVersion helps converting proto message kvrwset.Version to version.Height
+-func NewVersion(protoVersion *kvrwset.Version) *version.Height {
+-	if protoVersion == nil {
+-		return nil
+-	}
+-	return version.NewHeight(protoVersion.BlockNum, protoVersion.TxNum)
+-}
+-
+-func newProtoVersion(height *version.Height) *kvrwset.Version {
+-	if height == nil {
+-		return nil
+-	}
+-	return &kvrwset.Version{BlockNum: height.BlockNum, TxNum: height.TxNum}
+-}
+-
+-func newKVWrite(key string, value []byte) *kvrwset.KVWrite {
+-	return &kvrwset.KVWrite{Key: key, IsDelete: value == nil, Value: value}
+-}
+-
+-func newPvtKVReadHash(key string, version *version.Height) *kvrwset.KVReadHash {
+-	return &kvrwset.KVReadHash{KeyHash: util.ComputeStringHash(key), Version: newProtoVersion(version)}
+-}
+-
+-func newPvtKVWriteAndHash(key string, value []byte) (*kvrwset.KVWrite, *kvrwset.KVWriteHash) {
+-	kvWrite := newKVWrite(key, value)
+-	var keyHash, valueHash []byte
+-	keyHash = util.ComputeStringHash(key)
+-	if !kvWrite.IsDelete {
+-		valueHash = util.ComputeHash(value)
+-	}
+-	return kvWrite, &kvrwset.KVWriteHash{KeyHash: keyHash, IsDelete: kvWrite.IsDelete, ValueHash: valueHash}
+-}
 diff --git a/internal/github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/version/version.go b/internal/github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/version/version.go
 new file mode 100644
 index 0000000..ca984f6
@@ -1583,7 +1833,7 @@ index 0000000..ca984f6
 +	TxNum    uint64
 +}
 diff --git a/internal/github.com/hyperledger/fabric/core/ledger/util/txvalidationflags.go b/internal/github.com/hyperledger/fabric/core/ledger/util/txvalidationflags.go
-index d6e9851..bd6b108 100644
+index 3d57a33..bd6b108 100644
 --- a/internal/github.com/hyperledger/fabric/core/ledger/util/txvalidationflags.go
 +++ b/internal/github.com/hyperledger/fabric/core/ledger/util/txvalidationflags.go
 @@ -11,7 +11,7 @@ Please review third_party pinning scripts and patches for more details.
@@ -1595,26 +1845,62 @@ index d6e9851..bd6b108 100644
  )
  
  // TxValidationFlags is array of transaction validation codes. It is used when committer validates block.
-diff --git a/internal/github.com/hyperledger/fabric/internal/protoutil/commonutils.go b/internal/github.com/hyperledger/fabric/internal/protoutil/commonutils.go
-index 3606505..c9e8105 100644
---- a/internal/github.com/hyperledger/fabric/internal/protoutil/commonutils.go
-+++ b/internal/github.com/hyperledger/fabric/internal/protoutil/commonutils.go
-@@ -11,15 +11,7 @@ Please review third_party pinning scripts and patches for more details.
- package protoutil
+@@ -23,12 +23,6 @@ func NewTxValidationFlags(size int) TxValidationFlags {
+ 	return newTxValidationFlagsSetValue(size, peer.TxValidationCode_NOT_VALIDATED)
+ }
  
- import (
--	"crypto/rand"
--	"fmt"
--	"time"
+-// NewTxValidationFlagsSetValue Creates new object-array of validation codes with target size
+-// and the supplied value
+-func NewTxValidationFlagsSetValue(size int, value peer.TxValidationCode) TxValidationFlags {
+-	return newTxValidationFlagsSetValue(size, value)
+-}
 -
- 	"github.com/golang/protobuf/proto"
--	"github.com/golang/protobuf/ptypes/timestamp"
--	"github.com/hyperledger/fabric/internal/pkg/identity"
--	cb "github.com/hyperledger/fabric/protos/common"
--	"github.com/pkg/errors"
- )
+ func newTxValidationFlagsSetValue(size int, value peer.TxValidationCode) TxValidationFlags {
+ 	inst := make(TxValidationFlags, size)
+ 	for i := range inst {
+@@ -38,11 +32,6 @@ func newTxValidationFlagsSetValue(size int, value peer.TxValidationCode) TxValid
+ 	return inst
+ }
  
- // MarshalOrPanic serializes a protobuf message and panics if this
+-// SetFlag assigns validation code to specified transaction
+-func (obj TxValidationFlags) SetFlag(txIndex int, flag peer.TxValidationCode) {
+-	obj[txIndex] = uint8(flag)
+-}
+-
+ // Flag returns validation code at specified transaction
+ func (obj TxValidationFlags) Flag(txIndex int) peer.TxValidationCode {
+ 	return peer.TxValidationCode(obj[txIndex])
+diff --git a/internal/github.com/hyperledger/fabric/internal/protoutil/commonutils.go b/internal/github.com/hyperledger/fabric/internal/protoutil/commonutils.go
+new file mode 100644
+index 0000000..c9e8105
+--- /dev/null
++++ b/internal/github.com/hyperledger/fabric/internal/protoutil/commonutils.go
+@@ -0,0 +1,25 @@
++/*
++Copyright IBM Corp. All Rights Reserved.
++
++SPDX-License-Identifier: Apache-2.0
++*/
++/*
++Notice: This file has been modified for TrustBloc Fabric Lib Go EXT usage.
++Please review third_party pinning scripts and patches for more details.
++*/
++
++package protoutil
++
++import (
++	"github.com/golang/protobuf/proto"
++)
++
++// MarshalOrPanic serializes a protobuf message and panics if this
++// operation fails
++func MarshalOrPanic(pb proto.Message) []byte {
++	data, err := proto.Marshal(pb)
++	if err != nil {
++		panic(err)
++	}
++	return data
++}
 diff --git a/internal/github.com/hyperledger/fabric/libinternal/configtxgen/encoder/encoder.go b/internal/github.com/hyperledger/fabric/libinternal/configtxgen/encoder/encoder.go
 index 1e0b01f..c5e9dbb 100644
 --- a/internal/github.com/hyperledger/fabric/libinternal/configtxgen/encoder/encoder.go
@@ -2423,10 +2709,21 @@ index 026b09c..fe130ab 100644
  )
  
 diff --git a/internal/github.com/hyperledger/fabric/protoutil/commonutils.go b/internal/github.com/hyperledger/fabric/protoutil/commonutils.go
-index 31ba777..784f8b3 100644
+index f58464b..784f8b3 100644
 --- a/internal/github.com/hyperledger/fabric/protoutil/commonutils.go
 +++ b/internal/github.com/hyperledger/fabric/protoutil/commonutils.go
-@@ -17,9 +17,9 @@ import (
+@@ -7,10 +7,6 @@ SPDX-License-Identifier: Apache-2.0
+ Notice: This file has been modified for TrustBloc Fabric Lib Go EXT usage.
+ Please review third_party pinning scripts and patches for more details.
+ */
+-/*
+-Notice: This file has been modified for TrustBloc Fabric Lib Go EXT usage.
+-Please review third_party pinning scripts and patches for more details.
+-*/
+ 
+ package protoutil
+ 
+@@ -21,9 +17,9 @@ import (
  
  	"github.com/golang/protobuf/proto"
  	"github.com/golang/protobuf/ptypes/timestamp"
@@ -2438,7 +2735,7 @@ index 31ba777..784f8b3 100644
  )
  
  // MarshalOrPanic serializes a protobuf message and panics if this
-@@ -176,19 +176,6 @@ func NewSignatureHeaderOrPanic(id identity.Serializer) *cb.SignatureHeader {
+@@ -180,19 +176,6 @@ func NewSignatureHeaderOrPanic(id identity.Serializer) *cb.SignatureHeader {
  	return signatureHeader
  }
  
