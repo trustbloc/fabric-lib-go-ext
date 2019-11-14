@@ -32,8 +32,8 @@ type OrganizationProtos struct {
 type OrganizationConfig struct {
 	protos *OrganizationProtos
 
-	mspID            string
-	name             string
+	mspID string
+	name  string
 }
 
 // NewOrganizationConfig creates a new config for an organization
@@ -43,8 +43,8 @@ func NewOrganizationConfig(name string, orgGroup *cb.ConfigGroup) (*Organization
 	}
 
 	oc := &OrganizationConfig{
-		protos:           &OrganizationProtos{},
-		name:             name,
+		protos: &OrganizationProtos{},
+		name:   name,
 	}
 
 	if err := DeserializeProtoValuesFromGroup(orgGroup, oc.protos); err != nil {

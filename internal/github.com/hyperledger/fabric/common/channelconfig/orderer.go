@@ -106,8 +106,8 @@ func NewOrdererOrgConfig(orgName string, orgGroup *cb.ConfigGroup, channelCapabi
 		name:   orgName,
 		protos: protos,
 		OrganizationConfig: &OrganizationConfig{
-			name:             orgName,
-			protos:           orgProtos,
+			name:   orgName,
+			protos: orgProtos,
 		},
 	}
 

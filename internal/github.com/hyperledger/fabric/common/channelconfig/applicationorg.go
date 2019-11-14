@@ -52,8 +52,8 @@ func NewApplicationOrgConfig(id string, orgGroup *cb.ConfigGroup) (*ApplicationO
 		name:   id,
 		protos: protos,
 		OrganizationConfig: &OrganizationConfig{
-			name:             id,
-			protos:           orgProtos,
+			name:   id,
+			protos: orgProtos,
 		},
 	}
 

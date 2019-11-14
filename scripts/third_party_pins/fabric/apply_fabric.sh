@@ -11,11 +11,6 @@
 
 set -e
 
-IMPORT_SUBSTS=($IMPORT_SUBSTS)
-
-GOIMPORTS_CMD=goimports
-GOFILTER_CMD="go run scripts/_go/src/gofilter/cmd/gofilter/gofilter.go"
-
 # Create and populate patching directory.
 declare TMP=`mktemp -d 2>/dev/null || mktemp -d -t 'mytmpdir'`
 declare PATCH_PROJECT_PATH=$TMP/src/$UPSTREAM_PROJECT
@@ -23,6 +18,9 @@ cp -R ${TMP_PROJECT_PATH} ${PATCH_PROJECT_PATH}
 declare TMP_PROJECT_PATH=${PATCH_PROJECT_PATH}
 
 declare -a PKGS=(
+
+    "common/cauthdsl"
+    "core/ledger/kvledger/txmgmt/rwsetutil"
 
     "common/crypto"
     "common/errors"
@@ -61,6 +59,12 @@ declare -a PKGS=(
 )
 
 declare -a FILES=(
+
+    "common/cauthdsl/cauthdsl_builder.go"
+    "common/cauthdsl/policyparser.go"
+
+    "core/ledger/kvledger/txmgmt/rwsetutil/rwset_proto_util.go"
+    "core/ledger/util/txvalidationflags.go"
 
     "common/configtx/configtx.go"
 
@@ -113,7 +117,7 @@ declare -a FILES=(
 
     "common/viperutil/config_util.go"
 
-     "core/config/config.go"
+    "core/config/config.go"
 
     "common/util/utils.go"
 
@@ -129,6 +133,7 @@ declare -a FILES=(
     "protoutil/txutils.go"
     "protoutil/configtxutils.go"
     "protoutil/unmarshalers.go"
+    "protoutil/commonutils.go"
 
     "libinternal/configtxgen/encoder/encoder.go"
     "libinternal/configtxgen/localconfig/config.go"
@@ -145,57 +150,9 @@ do
     mkdir -p $INTERNAL_PATH/${i}
 done
 
-# Apply fine-grained patching
-gofilter() {
-    echo "Filtering: ${FILTER_FILENAME}"
-    cp ${TMP_PROJECT_PATH}/${FILTER_FILENAME} ${TMP_PROJECT_PATH}/${FILTER_FILENAME}.bak
-    $GOFILTER_CMD -filename "${TMP_PROJECT_PATH}/${FILTER_FILENAME}.bak" \
-        -filters "$FILTERS_ENABLED" -fn "$FILTER_FN" -gen "$FILTER_GEN" -type "$FILTER_TYPE" \
-        > "${TMP_PROJECT_PATH}/${FILTER_FILENAME}"
-} 
-
 echo "Modifying go source files"
 
-echo "Filtering Go sources for allowed functions ..."
-FILTERS_ENABLED="fn"
-
-FILTER_FILENAME="common/crypto/random.go"
-FILTER_FN="GetRandomNonce,GetRandomBytes"
-gofilter
-
-FILTER_FILENAME="common/util/utils.go"
-FILTER_FN="ConcatenateBytes,GenerateBytesUUID,GenerateIntUUID,GenerateUUID,idBytesToStr"
-gofilter
-
-FILTER_FILENAME="common/policies/policy.go"
-FILTER_FN=
-gofilter
-
-FILTER_FILENAME="libinternal/configtxgen/localconfig/config.go"
-FILTER_FN="Load,LoadTopLevel,completeInitialization,translatePaths"
-gofilter
-
-echo "Filtering Go sources for allowed declarations ..."
-FILTERS_ENABLED="gen,type"
-FILTER_TYPE="IMPORT,CONST"
-# Allow no declarations
-FILTER_GEN=
-
-FILTER_FILENAME="common/util/utils.go"
-gofilter
-
-FILTER_FILENAME="core/ledger/kvledger/txmgmt/version/version.go"
-FILTER_FN=
-gofilter
-
-FILTER_FILENAME="libinternal/configtxgen/localconfig/config.go"
-FILTER_GEN="logger,configName,TopLevel,Profile,Policy,Consortium,Application,Resources,Organization,AnchorPeer,Orderer,BatchSize,Kafka,genesisDefaults"
-gofilter
-
 # Apply patching
-echo "Patching import paths on upstream project ..."
-WORKING_DIR=$TMP_PROJECT_PATH FILES="${FILES[@]}" IMPORT_SUBSTS="${IMPORT_SUBSTS[@]}" scripts/third_party_pins/common/apply_import_patching.sh
-
 echo "Inserting modification notice ..."
 WORKING_DIR=$TMP_PROJECT_PATH FILES="${FILES[@]}" scripts/third_party_pins/common/apply_header_notice.sh
 
