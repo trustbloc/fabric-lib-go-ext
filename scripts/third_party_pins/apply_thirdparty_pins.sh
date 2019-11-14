@@ -10,13 +10,13 @@
 
 set -e
 
-#if output=$(git status --porcelain) && [ -z "$output" ]
-#then
-#  echo "Working directory clean, proceeding with upstream patching"
-#else
-#  echo "ERROR: git status must be clean before applying upstream patches"
-#  exit 1
-#fi
+if output=$(git status --porcelain) && [ -z "$output" ]
+then
+  echo "Working directory clean, proceeding with upstream patching"
+else
+  echo "ERROR: git status must be clean before applying upstream patches"
+  exit 1
+fi
 
 scripts/third_party_pins/fabric/apply_upstream.sh
 
@@ -39,14 +39,15 @@ scripts/third_party_pins/fabric/apply_upstream.sh
 #    3.2 Complete the patch.
 # git am --continue
 
-#    3.3. Create the new correct patch to upstream changes.
-# format-patch --stdout HEAD^..HEAD > scripts/third_party_pins/patches/upstream.patch
+#    3.3. Create the new correct patch for upstream changes.
+#    IMPORTANT: DO NOT SQUASH commits used to create the patch, as they have
+#    to be present for proper 3-way merge in step 2 (on the next upstream update).
+#    Also notice that the command above assumes that the last two commits are
+#    from steps 1 and 3.2.
+# git format-patch --stdout HEAD^..HEAD > scripts/third_party_pins/patches/upstream.patch
 
-#    3.4 Commit the new correct patch to upstream changes.
+#    3.4 Commit the new correct patch for upstream changes.
 # git add .
 # git commit amend -m "Apply upstream packages"
 
-# 4. Push all the changes.
-#    IMPORTANT: DO NOT SQUASH! Commit from step 1 has to be present for
-#    proper 3-way merge. Also notice that step 3.3 assumes that the last two commits
-#    are from step 1 and step 3.2.
+# 4. Push all commits.

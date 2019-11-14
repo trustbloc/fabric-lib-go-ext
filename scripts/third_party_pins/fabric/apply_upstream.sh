@@ -14,7 +14,6 @@ set -e
 UPSTREAM_PROJECT="github.com/hyperledger/fabric"
 UPSTREAM_BRANCH="${UPSTREAM_BRANCH:-release}"
 SCRIPTS_PATH="scripts/third_party_pins/fabric"
-PATCHES_PATH="${SCRIPTS_PATH}/patches"
 
 THIRDPARTY_INTERNAL_FABRIC_PATH='internal/github.com/hyperledger/fabric'
 
@@ -41,35 +40,13 @@ echo 'Removing current upstream project from working directory ...'
 rm -Rf "${THIRDPARTY_INTERNAL_FABRIC_PATH}"
 mkdir -p "${THIRDPARTY_INTERNAL_FABRIC_PATH}"
 
-# Create internal utility structure
-mkdir -p ${TMP_PROJECT_PATH}/internal/protoutil
-cp -R ${TMP_PROJECT_PATH}/protoutil ${TMP_PROJECT_PATH}/internal/
-
 # copy required files that are under internal into non-internal structure.
 mkdir -p ${TMP_PROJECT_PATH}/libinternal
 cp -R ${TMP_PROJECT_PATH}/internal/* ${TMP_PROJECT_PATH}/libinternal/
 
 # fabric client utils
-echo "Pinning and patching fabric client utils..."
-declare -a CLIENT_UTILS_IMPORT_SUBSTS=(
-    's/\"github.com\/hyperledger\/fabric\/internal/\"github.com\/trustbloc\/fabric-lib-go-ext\/internal\/github.com\/hyperledger\/fabric\/libinternal/g'
-    's/[[:space:]]logging[[:space:]]\"github.com/\"github.com/g'
-    's/\"github.com\/hyperledger\/fabric\/protos/\"github.com\/hyperledger\/fabric-protos-go/g'
-    's/\"github.com\/hyperledger\/fabric\//\"github.com\/trustbloc\/fabric-lib-go-ext\/internal\/github.com\/hyperledger\/fabric\//g'
-)
-
-INTERNAL_PATH=$THIRDPARTY_INTERNAL_FABRIC_PATH TMP_PROJECT_PATH=$TMP_PROJECT_PATH IMPORT_SUBSTS="${CLIENT_UTILS_IMPORT_SUBSTS[*]}" $SCRIPTS_PATH/apply_fabric_client_utils.sh
-INTERNAL_PATH=$THIRDPARTY_INTERNAL_FABRIC_PATH TMP_PROJECT_PATH=$TMP_PROJECT_PATH IMPORT_SUBSTS="${CLIENT_UTILS_IMPORT_SUBSTS[*]}" $SCRIPTS_PATH/apply_fabric_common_utils.sh
-
-# external utils
-echo "Pinning and patching fabric external utils ..."
-declare -a EXTERNAL_UTILS_IMPORT_SUBSTS=(
-    's/\"github.com\/hyperledger\/fabric\/protoutil/\"github.com\/trustbloc\/fabric-lib-go-ext\/internal\/github.com\/hyperledger\/fabric\/internal\/protoutil/g'
-    's/\"github.com\/hyperledger\/fabric\/protos/\"github.com\/hyperledger\/fabric-protos-go/g'
-    's/\"github.com\/hyperledger\/fabric\//\"github.com\/trustbloc\/fabric-lib-go-ext\/internal\/github.com\/hyperledger\/fabric\//g'
-)
-INTERNAL_PATH=$THIRDPARTY_INTERNAL_FABRIC_PATH TMP_PROJECT_PATH=$TMP_PROJECT_PATH IMPORT_SUBSTS="${EXTERNAL_UTILS_IMPORT_SUBSTS[*]}" $SCRIPTS_PATH/apply_fabric_external_utils.sh
-INTERNAL_PATH=$THIRDPARTY_INTERNAL_FABRIC_PATH TMP_PROJECT_PATH=$TMP_PROJECT_PATH IMPORT_SUBSTS="${EXTERNAL_UTILS_IMPORT_SUBSTS[*]}" $SCRIPTS_PATH/apply_fabric_common_utils.sh
+echo "Pinning and patching fabric ..."
+INTERNAL_PATH=$THIRDPARTY_INTERNAL_FABRIC_PATH TMP_PROJECT_PATH=$TMP_PROJECT_PATH $SCRIPTS_PATH/apply_fabric.sh
 
 # Cleanup temporary files from patches application
 echo "Removing temporary files ..."
