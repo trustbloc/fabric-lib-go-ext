@@ -13,12 +13,12 @@ package channelconfig
 import (
 	"time"
 
-	cb "github.com/hyperledger/fabric-protos-go/common"
-	ab "github.com/hyperledger/fabric-protos-go/orderer"
-	pb "github.com/hyperledger/fabric-protos-go/peer"
-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/configtx"
-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/policies"
-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/msp"
+	"github.com/hyperledger/fabric/common/configtx"
+	"github.com/hyperledger/fabric/common/policies"
+	"github.com/hyperledger/fabric/msp"
+	cb "github.com/hyperledger/fabric/protos/common"
+	ab "github.com/hyperledger/fabric/protos/orderer"
+	pb "github.com/hyperledger/fabric/protos/peer"
 )
 
 // Org stores the common organizational config
@@ -254,6 +254,9 @@ type Resources interface {
 	// ApplicationConfig returns the configtxapplication.SharedConfig for the channel
 	// and whether the Application config exists
 	ApplicationConfig() (Application, bool)
+
+	// MSPManager returns the msp.MSPManager for the chain
+	MSPManager() msp.MSPManager
 
 	// ValidateNew should return an error if a new set of configuration resources is incompatible with the current one
 	ValidateNew(resources Resources) error

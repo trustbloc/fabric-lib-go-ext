@@ -11,7 +11,7 @@ Please review third_party pinning scripts and patches for more details.
 package channelconfig
 
 import (
-	cb "github.com/hyperledger/fabric-protos-go/common"
+	cb "github.com/hyperledger/fabric/protos/common"
 	"github.com/pkg/errors"
 )
 
@@ -33,7 +33,7 @@ type ConsortiumConfig struct {
 }
 
 // NewConsortiumConfig creates a new instance of the consoritums config
-func NewConsortiumConfig(consortiumGroup *cb.ConfigGroup) (*ConsortiumConfig, error) {
+func NewConsortiumConfig(consortiumGroup *cb.ConfigGroup, mspConfig *MSPConfigHandler) (*ConsortiumConfig, error) {
 	cc := &ConsortiumConfig{
 		protos: &ConsortiumProtos{},
 		orgs:   make(map[string]Org),
@@ -45,7 +45,7 @@ func NewConsortiumConfig(consortiumGroup *cb.ConfigGroup) (*ConsortiumConfig, er
 
 	for orgName, orgGroup := range consortiumGroup.Groups {
 		var err error
-		if cc.orgs[orgName], err = NewOrganizationConfig(orgName, orgGroup); err != nil {
+		if cc.orgs[orgName], err = NewOrganizationConfig(orgName, orgGroup, mspConfig); err != nil {
 			return nil, err
 		}
 	}

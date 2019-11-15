@@ -24,10 +24,10 @@ import (
 
 	"github.com/Shopify/sarama"
 	version "github.com/hashicorp/go-version"
+	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
-	flogging "github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/libpatch/logbridge"
 )
 
 var logger = flogging.MustGetLogger("viperutil")

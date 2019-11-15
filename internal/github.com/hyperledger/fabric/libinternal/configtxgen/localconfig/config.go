@@ -16,14 +16,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pkg/errors"
-
-	"github.com/hyperledger/fabric-protos-go/orderer/etcdraft"
+	"github.com/hyperledger/fabric/common/flogging"
+	"github.com/hyperledger/fabric/common/policies"
+	"github.com/hyperledger/fabric/common/viperutil"
+	cf "github.com/hyperledger/fabric/core/config"
+	"github.com/hyperledger/fabric/msp"
+	"github.com/hyperledger/fabric/protos/orderer/etcdraft"
 	"github.com/spf13/viper"
-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/policies"
-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/viperutil"
-	flogging "github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/libpatch/logbridge"
-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/msp"
 )
 
 const (
@@ -223,15 +222,16 @@ var genesisDefaults = TopLevel{
 //
 // Note, for environment overrides to work properly within a profile, Load
 // should be used instead.
-func LoadTopLevel(configPaths ...string) (*TopLevel, error) {
-	if len(configPaths) == 0 {
-		return nil, errors.New("Missing config path")
-	}
+func LoadTopLevel(configPaths ...string) *TopLevel {
 	config := viper.New()
-	for _, p := range configPaths {
-		config.AddConfigPath(p)
+	if len(configPaths) > 0 {
+		for _, p := range configPaths {
+			config.AddConfigPath(p)
+		}
+		config.SetConfigName(configName)
+	} else {
+		cf.InitViper(config, configName)
 	}
-	config.SetConfigName(configName)
 
 	// For environment variables
 	config.SetEnvPrefix(Prefix)
@@ -242,35 +242,36 @@ func LoadTopLevel(configPaths ...string) (*TopLevel, error) {
 
 	err := config.ReadInConfig()
 	if err != nil {
-		return nil, errors.WithMessage(err, "Error reading configuration: ")
+		logger.Panic("Error reading configuration: ", err)
 	}
 	logger.Debugf("Using config file: %s", config.ConfigFileUsed())
 
 	var uconf TopLevel
 	err = viperutil.EnhancedExactUnmarshal(config, &uconf)
 	if err != nil {
-		return nil, errors.WithMessage(err, "Error unmarshaling config into struct: ")
+		logger.Panic("Error unmarshaling config into struct: ", err)
 	}
 
 	(&uconf).completeInitialization(filepath.Dir(config.ConfigFileUsed()))
 
 	logger.Infof("Loaded configuration: %s", config.ConfigFileUsed())
 
-	return &uconf, nil
+	return &uconf
 }
 
 // Load returns the orderer/application config combination that corresponds to
 // a given profile. Config paths may optionally be provided and will be used
 // in place of the FABRIC_CFG_PATH env variable.
-func Load(profile string, configPaths ...string) (*Profile, error) {
-	if len(configPaths) == 0 {
-		return nil, errors.New("Missing config path")
-	}
+func Load(profile string, configPaths ...string) *Profile {
 	config := viper.New()
-	for _, p := range configPaths {
-		config.AddConfigPath(p)
+	if len(configPaths) > 0 {
+		for _, p := range configPaths {
+			config.AddConfigPath(p)
+		}
+		config.SetConfigName(configName)
+	} else {
+		cf.InitViper(config, configName)
 	}
-	config.SetConfigName(configName)
 
 	// For environment variables
 	config.SetEnvPrefix(Prefix)
@@ -283,26 +284,26 @@ func Load(profile string, configPaths ...string) (*Profile, error) {
 
 	err := config.ReadInConfig()
 	if err != nil {
-		return nil, errors.WithMessage(err, "Error reading configuration: ")
+		logger.Panic("Error reading configuration: ", err)
 	}
 	logger.Debugf("Using config file: %s", config.ConfigFileUsed())
 
 	var uconf TopLevel
 	err = viperutil.EnhancedExactUnmarshal(config, &uconf)
 	if err != nil {
-		return nil, errors.WithMessage(err, "Error unmarshaling config into struct: ")
+		logger.Panic("Error unmarshaling config into struct: ", err)
 	}
 
 	result, ok := uconf.Profiles[profile]
 	if !ok {
-		return nil, errors.Errorf("Could not find profile: %v", profile)
+		logger.Panic("Could not find profile: ", profile)
 	}
 
 	result.completeInitialization(filepath.Dir(config.ConfigFileUsed()))
 
 	logger.Infof("Loaded configuration: %s", config.ConfigFileUsed())
 
-	return result, nil
+	return result
 }
 
 func (t *TopLevel) completeInitialization(configDir string) {
@@ -365,7 +366,7 @@ func (org *Organization) completeInitialization(configDir string) {
 	translatePaths(configDir, org)
 }
 
-func (ord *Orderer) completeInitialization(configDir string) error {
+func (ord *Orderer) completeInitialization(configDir string) {
 loop:
 	for {
 		switch {
@@ -405,7 +406,7 @@ loop:
 		}
 	case EtcdRaft:
 		if ord.EtcdRaft == nil {
-			return errors.Errorf("%s configuration missing", EtcdRaft)
+			logger.Panicf("%s configuration missing", EtcdRaft)
 		}
 		if ord.EtcdRaft.Options == nil {
 			logger.Infof("Orderer.EtcdRaft.Options unset, setting to %v", genesisDefaults.Orderer.EtcdRaft.Options)
@@ -435,7 +436,7 @@ loop:
 				ord.EtcdRaft.Options.SnapshotIntervalSize = genesisDefaults.Orderer.EtcdRaft.Options.SnapshotIntervalSize
 
 			case len(ord.EtcdRaft.Consenters) == 0:
-				return errors.Errorf("%s configuration did not specify any consenter", EtcdRaft)
+				logger.Panicf("%s configuration did not specify any consenter", EtcdRaft)
 
 			default:
 				break second_loop
@@ -443,7 +444,7 @@ loop:
 		}
 
 		if _, err := time.ParseDuration(ord.EtcdRaft.Options.TickInterval); err != nil {
-			return errors.Errorf("Etcdraft TickInterval (%s) must be in time duration format", ord.EtcdRaft.Options.TickInterval)
+			logger.Panicf("Etcdraft TickInterval (%s) must be in time duration format", ord.EtcdRaft.Options.TickInterval)
 		}
 
 		// validate the specified members for Options
@@ -453,42 +454,29 @@ loop:
 
 		for _, c := range ord.EtcdRaft.GetConsenters() {
 			if c.Host == "" {
-				return errors.Errorf("consenter info in %s configuration did not specify host", EtcdRaft)
+				logger.Panicf("consenter info in %s configuration did not specify host", EtcdRaft)
 			}
 			if c.Port == 0 {
-				return errors.Errorf("consenter info in %s configuration did not specify port", EtcdRaft)
+				logger.Panicf("consenter info in %s configuration did not specify port", EtcdRaft)
 			}
 			if c.ClientTlsCert == nil {
-				return errors.Errorf("consenter info in %s configuration did not specify client TLS cert", EtcdRaft)
+				logger.Panicf("consenter info in %s configuration did not specify client TLS cert", EtcdRaft)
 			}
 			if c.ServerTlsCert == nil {
-				return errors.Errorf("consenter info in %s configuration did not specify server TLS cert", EtcdRaft)
+				logger.Panicf("consenter info in %s configuration did not specify server TLS cert", EtcdRaft)
 			}
 			clientCertPath := string(c.GetClientTlsCert())
-			translatePathInPlace(configDir, &clientCertPath)
+			cf.TranslatePathInPlace(configDir, &clientCertPath)
 			c.ClientTlsCert = []byte(clientCertPath)
 			serverCertPath := string(c.GetServerTlsCert())
-			translatePathInPlace(configDir, &serverCertPath)
+			cf.TranslatePathInPlace(configDir, &serverCertPath)
 			c.ServerTlsCert = []byte(serverCertPath)
 		}
 	default:
-		return errors.Errorf("unknown orderer type: %s", ord.OrdererType)
+		logger.Panicf("unknown orderer type: %s", ord.OrdererType)
 	}
-	return nil
 }
 
 func translatePaths(configDir string, org *Organization) {
-	translatePathInPlace(configDir, &org.MSPDir)
-}
-
-func translatePath(base, p string) string {
-	if filepath.IsAbs(p) {
-		return p
-	}
-
-	return filepath.Join(base, p)
-}
-
-func translatePathInPlace(base string, p *string) {
-	*p = translatePath(base, *p)
+	cf.TranslatePathInPlace(configDir, &org.MSPDir)
 }

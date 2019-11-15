@@ -14,7 +14,7 @@ Please review third_party pinning scripts and patches for more details.
 
 package protoutil
 
-import "github.com/hyperledger/fabric-protos-go/common"
+import "github.com/hyperledger/fabric/protos/common"
 
 func NewConfigGroup() *common.ConfigGroup {
 	return &common.ConfigGroup{
