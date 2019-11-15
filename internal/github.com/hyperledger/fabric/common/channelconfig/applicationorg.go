@@ -13,8 +13,8 @@ package channelconfig
 import (
 	"fmt"
 
-	cb "github.com/hyperledger/fabric-protos-go/common"
-	pb "github.com/hyperledger/fabric-protos-go/peer"
+	cb "github.com/hyperledger/fabric/protos/common"
+	pb "github.com/hyperledger/fabric/protos/peer"
 	"github.com/pkg/errors"
 )
 
@@ -36,7 +36,7 @@ type ApplicationOrgConfig struct {
 }
 
 // NewApplicationOrgConfig creates a new config for an application org
-func NewApplicationOrgConfig(id string, orgGroup *cb.ConfigGroup) (*ApplicationOrgConfig, error) {
+func NewApplicationOrgConfig(id string, orgGroup *cb.ConfigGroup, mspConfig *MSPConfigHandler) (*ApplicationOrgConfig, error) {
 	if len(orgGroup.Groups) > 0 {
 		return nil, fmt.Errorf("ApplicationOrg config does not allow sub-groups")
 	}
@@ -52,8 +52,9 @@ func NewApplicationOrgConfig(id string, orgGroup *cb.ConfigGroup) (*ApplicationO
 		name:   id,
 		protos: protos,
 		OrganizationConfig: &OrganizationConfig{
-			name:   id,
-			protos: orgProtos,
+			name:             id,
+			protos:           orgProtos,
+			mspConfigHandler: mspConfig,
 		},
 	}
 

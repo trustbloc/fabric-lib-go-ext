@@ -11,21 +11,21 @@ Please review third_party pinning scripts and patches for more details.
 package encoder
 
 import (
-	"github.com/golang/protobuf/proto"
-	cb "github.com/hyperledger/fabric-protos-go/common"
-	pb "github.com/hyperledger/fabric-protos-go/peer"
+	"github.com/gogo/protobuf/proto"
+	"github.com/hyperledger/fabric/common/cauthdsl"
+	"github.com/hyperledger/fabric/common/channelconfig"
+	"github.com/hyperledger/fabric/common/flogging"
+	"github.com/hyperledger/fabric/common/genesis"
+	"github.com/hyperledger/fabric/common/policies"
+	"github.com/hyperledger/fabric/common/util"
+	genesisconfig "github.com/hyperledger/fabric/internal/configtxgen/localconfig"
+	"github.com/hyperledger/fabric/internal/configtxlator/update"
+	"github.com/hyperledger/fabric/internal/pkg/identity"
+	"github.com/hyperledger/fabric/msp"
+	cb "github.com/hyperledger/fabric/protos/common"
+	pb "github.com/hyperledger/fabric/protos/peer"
+	"github.com/hyperledger/fabric/protoutil"
 	"github.com/pkg/errors"
-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/cauthdsl"
-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/channelconfig"
-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/genesis"
-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/policies"
-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/common/util"
-	genesisconfig "github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/libinternal/configtxgen/localconfig"
-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/libinternal/configtxlator/update"
-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/libinternal/pkg/identity"
-	flogging "github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/libpatch/logbridge"
-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/msp"
-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/protoutil"
 )
 
 const (

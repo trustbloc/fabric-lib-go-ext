@@ -14,9 +14,8 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/golang/protobuf/proto"
-
-	"github.com/hyperledger/fabric-protos-go/common"
+	"github.com/gogo/protobuf/proto"
+	"github.com/hyperledger/fabric/protos/common"
 )
 
 // SignedData is used to represent the general triplet required to verify a signature

@@ -15,10 +15,10 @@ import (
 	"crypto/sha256"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/hyperledger/fabric-protos-go/common"
-	"github.com/hyperledger/fabric-protos-go/peer"
+	"github.com/hyperledger/fabric/internal/pkg/identity"
+	"github.com/hyperledger/fabric/protos/common"
+	"github.com/hyperledger/fabric/protos/peer"
 	"github.com/pkg/errors"
-	"github.com/trustbloc/fabric-lib-go-ext/internal/github.com/hyperledger/fabric/libinternal/pkg/identity"
 )
 
 // GetPayloads gets the underlying payload objects in a TransactionAction
