@@ -15,7 +15,7 @@ jobs:
     steps:
     - template: azp-dependencies.yml
     - checkout: self
-    #- script: make unit-test
-    #  displayName: Run checks and unit test
-    #- script: bash <(curl https://codecov.io/bash)
-    #  displayName: Upload coverage to Codecov 
+    - script: make unit-test
+      displayName: Run checks and unit test
+    - script: bash <(curl https://codecov.io/bash)
+      displayName: Upload coverage to Codecov
