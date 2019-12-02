@@ -24,28 +24,31 @@ scripts/third_party_pins/fabric/apply_upstream.sh
 # and applies proper headers. The rest of the process, described below, is about
 # pathcing Fabric files so they compile and work locally.
 
-# Having modern visual tools (e.g. Goland) greatly simplifies handling changes
-# between upstream versions. Strictly speaking, the only thing needed is a previous
-# commit which worked with the previous upstream version. When the new upstream
-# version is copied to /internal, one can open a visual tool, compare current
-# code with the previously working version, and replay all previous fixes manually
-# (a simple click which moves diffs from with working version to current) and resolve
-# any errors introduced by the new version. This approach is inconvenient due to
-# possbily large number of changes to apply and the possibility of making mistakes
-# during this process. The preferrable apporach is to replay the same changes by
-# applying a git patch previously created against the commit with Fabric files
-# only copied to /internal and the commit with all changes to Fabric files required
-# to make them work locally. The process below supports the git patch approach.
+# The first time upstream was patched in this repo, everything had to be done
+# by hand. Each next time upstream is updated, we start by replaying the changes
+# from the last patch, and proceed by resolving any conflicts and making any other
+# changes to make all tests pass. In order for this process to work, it is
+# necessary that each time we patch upstream we preserve the commit containing only
+# the patch, so we can use it next time to replay the same changes.
 
-# Once upstream changes have been applied follow these steps:
+# The first patch commit in this repo was 30f3fda5d02f0b07e4c3e9511ea9fe6c50d8bbba.
+# The steps below describe how to replay changes from 30f3fda5d02f0b07e4c3e9511ea9fe6c50d8bbba
+# on master at any time in the future.
 
-# 1. Commit upstream files in a commit separate from the patch which makes them work locally
+# 1. Asuming we just ran 'make thirdparty-pin', we must commit upstream files first. This will
+# keep the subsequent patch in its own clean commit so we can use it in the future.
 # git add .
 # git commit --signoff -m "Apply upstream packages"
 
-# 2. Apply the last correct patch to upstream changes. The patch is not guaranteed to work with
-#    the latest changes, so use -3 option to perform 3-way merge.
-# git am -3 scripts/third_party_pins/patches/upstream.patch
+# 2. Replay changes from the last correct patch. We do it using git, with the help of a
+#    temporary branch where we first copy the changes we want to replay. The common
+#    ancestor of the temporary branch has to be the commit which is the fist ancestor of
+#    the last correct patch, in our case 935b01752c01cc18f15491d520337ede22eeaab5.
+# git format-patch --stdout 935b01752c01cc18f15491d520337ede22eeaab5..30f3fda5d02f0b07e4c3e9511ea9fe6c50d8bbba > ~/last.patch
+# git checkout -b fix 935b01752c01cc18f15491d520337ede22eeaab5
+# git am ~/last.patch
+# git checkout master
+# git merge fix
 
 # 3. If there are conflicts in step 2:
 
@@ -54,17 +57,6 @@ scripts/third_party_pins/fabric/apply_upstream.sh
 # go mod tidy
 
 #    3.2 Complete the patch.
-# git am --continue
+# git commit --signoff
 
-#    3.3. Create the new correct patch for upstream changes.
-#    IMPORTANT: DO NOT SQUASH the commit created in step 1, as it has
-#    to be present for proper 3-way merge in step 2 (on the next upstream update).
-#    Also notice that the command above assumes that the last two commits are
-#    from steps 1 and 3.2.
-# git format-patch --stdout HEAD^..HEAD > scripts/third_party_pins/patches/upstream.patch
-
-#    3.4 Commit the new correct patch for upstream changes.
-# git add scripts/third_party_pins/patches/upstream.patch
-# git commit --amend
-
-# 4. Push all commits.
+# 4. Amend as required, and push all commits.
